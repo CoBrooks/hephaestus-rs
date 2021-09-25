@@ -1,3 +1,6 @@
+use std::fs;
+use std::io::Cursor;
+use vulkano::image::ImageDimensions;
 use cgmath::{ Deg, Euler, Quaternion, Vector3, Rotation };
 
 use crate::{ 
@@ -16,6 +19,7 @@ pub struct Plane {
     pub rotation: Quaternion<f32>,
     pub scale: Vector3<f32>,
     pub color: [f32; 3],
+    pub texture_data: Option<(Vec<u8>, ImageDimensions)>,
     vertices: Vec<Vertex>,
 }
 
@@ -27,6 +31,7 @@ impl Plane {
             rotation: Quaternion::new(1.0, 0.0, 0.0, 0.0),
             scale: scale.into(),
             vertices: Vec::new(),
+            texture_data: None,
             color,
         };
         
@@ -41,6 +46,24 @@ impl Plane {
 
     pub fn rotate(&mut self, r: Euler<Deg<f32>>) {
         self.rotation = r.into();
+    }
+    
+    pub fn add_texture(&mut self, tex_path: &str) {
+        let png_bytes = fs::read(&tex_path).unwrap(); 
+        let cursor = Cursor::new(png_bytes);
+        let decoder = png::Decoder::new(cursor);
+        let mut reader = decoder.read_info().unwrap();
+        let info = reader.info();
+        let dimensions = ImageDimensions::Dim2d {
+            width: info.width,
+            height: info.height,
+            array_layers: 1
+        };
+        let mut image_data = Vec::new();
+        image_data.resize((info.width * info.height * 4) as usize, 0);
+        reader.next_frame(&mut image_data).unwrap();
+
+        self.texture_data = Some((image_data, dimensions));
     }
 }
 
@@ -73,7 +96,7 @@ impl Viewable for Plane {
                 ],
                 color: self.color,
                 normal: [0.0, 0.0, 1.0],
-                uv: [0.0, 0.0]
+                uv: [0.0, 1.0]
             },
             Vertex { // bottom right
                 position: [
@@ -83,7 +106,7 @@ impl Viewable for Plane {
                 ],
                 color: self.color,
                 normal: [0.0, 0.0, 1.0],
-                uv: [0.0, 0.0]
+                uv: [1.0, 1.0]
             },
             Vertex { // bottom left
                 position: [
@@ -93,7 +116,7 @@ impl Viewable for Plane {
                 ],
                 color: self.color,
                 normal: [0.0, 0.0, 1.0],
-                uv: [0.0, 0.0]
+                uv: [1.0, 0.0]
             },
         ];
 
@@ -116,6 +139,10 @@ impl Viewable for Plane {
             2, 3, 0
         ]
     }
+
+    fn get_texture_data(&self) -> (Vec<u8>, vulkano::image::ImageDimensions) {
+        self.texture_data.clone().unwrap()
+    }
 }
 //}}}
 
@@ -124,6 +151,7 @@ pub struct Cube {
     pub origin: Vector3<f32>,
     pub scale: Vector3<f32>,
     pub color: [f32; 3],
+    pub texture_data: Option<(Vec<u8>, ImageDimensions)>,
     faces: Vec<Plane>,
 }
 
@@ -133,6 +161,7 @@ impl Cube {
             origin: origin.into(), 
             scale: scale.into(),
             faces: Vec::new(),
+            texture_data: None,
             color
         };
 
@@ -143,6 +172,24 @@ impl Cube {
 
     pub fn identity() -> Self {
         Self::new([0.0; 3], [1.0; 3], [1.0; 3])   
+    }
+    
+    pub fn add_texture(&mut self, tex_path: &str) {
+        let png_bytes = fs::read(&tex_path).unwrap(); 
+        let cursor = Cursor::new(png_bytes);
+        let decoder = png::Decoder::new(cursor);
+        let mut reader = decoder.read_info().unwrap();
+        let info = reader.info();
+        let dimensions = ImageDimensions::Dim2d {
+            width: info.width,
+            height: info.height,
+            array_layers: 1
+        };
+        let mut image_data = Vec::new();
+        image_data.resize((info.width * info.height * 4) as usize, 0);
+        reader.next_frame(&mut image_data).unwrap();
+
+        self.texture_data = Some((image_data, dimensions));
     }
 }
 
@@ -155,7 +202,7 @@ impl Primitive for Cube {
             [self.scale.x, self.scale.y, 1.0], 
             self.color
         );
-        top.rotate(Euler { x: Deg(0.0), y: Deg(0.0), z: Deg(0.0) });
+        top.rotate(Euler { x: Deg(0.0), y: Deg(0.0), z: Deg(180.0) });
 
         let mut bottom = Plane::new(
             [self.origin.x, self.origin.y, self.origin.z - self.scale.z / 2.0], 
@@ -176,21 +223,21 @@ impl Primitive for Cube {
             [self.scale.x, self.scale.y, 1.0], 
             self.color
         );
-        back.rotate(Euler { x: Deg(0.0), y: Deg(-90.0), z: Deg(0.0) });
+        back.rotate(Euler { x: Deg(180.0), y: Deg(-90.0), z: Deg(0.0) });
         
         let mut left = Plane::new(
             [self.origin.x, self.origin.y - self.scale.y / 2.0, self.origin.z], 
             [self.scale.x, self.scale.y, 1.0], 
             self.color
         );
-        left.rotate(Euler { x: Deg(90.0), y: Deg(0.0), z: Deg(0.0) });
+        left.rotate(Euler { x: Deg(90.0), y: Deg(0.0), z: Deg(-90.0) });
         
         let mut right = Plane::new(
             [self.origin.x, self.origin.y + self.scale.y / 2.0, self.origin.z], 
             [self.scale.x, self.scale.y, 1.0], 
             self.color
         );
-        right.rotate(Euler { x: Deg(-90.0), y: Deg(0.0), z: Deg(0.0) });
+        right.rotate(Euler { x: Deg(-90.0), y: Deg(0.0), z: Deg(90.0) });
         
         planes.push(top);
         planes.push(bottom);
@@ -222,6 +269,10 @@ impl Viewable for Cube {
                 .map(|i| i + i_per_face * index as u16)
                 .collect::<Vec<u16>>()
             ).collect()
+    }
+
+    fn get_texture_data(&self) -> (Vec<u8>, vulkano::image::ImageDimensions) {
+        self.texture_data.clone().unwrap()
     }
 }
 //}}}

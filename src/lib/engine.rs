@@ -1,23 +1,25 @@
+//{{{ Dependencies
 use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{
-    AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SubpassContents,
+    AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SubpassContents, CommandBufferExecFuture, PrimaryAutoCommandBuffer
 };
 use vulkano::descriptor_set::persistent::PersistentDescriptorSet;
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features, Queue};
 use vulkano::format::Format;
 use vulkano::image::view::ImageView;
-use vulkano::image::{ImageUsage, SwapchainImage, attachment::AttachmentImage};
+use vulkano::image::{ImageUsage, SwapchainImage, attachment::AttachmentImage, ImmutableImage};
 use vulkano::instance::Instance;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::{GraphicsPipeline, GraphicsPipelineAbstract};
 use vulkano::pipeline::vertex::BuffersDefinition;
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
+use vulkano::sampler::Sampler;
 use vulkano::swapchain;
 use vulkano::swapchain::{AcquireError, Surface, Swapchain, SwapchainCreationError};
 use vulkano::sync;
-use vulkano::sync::{FlushError, GpuFuture};
+use vulkano::sync::{FlushError, GpuFuture, NowFuture};
 use vulkano::Version;
 use vulkano_win::VkSurfaceBuild;
 use winit::event::{Event, WindowEvent};
@@ -25,11 +27,13 @@ use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
 use cgmath::{Rad, Deg, Point3, Vector3, Matrix4};
 use std::time::Instant;
+//}}}
 
 use crate::{
     buffer_objects::*,
     world::*,
     shaders::{ vs, fs },
+    object::Object,
 };
 
 #[allow(dead_code)]
@@ -306,7 +310,7 @@ impl Engine {
         let view = Matrix4::look_at_rh(
             Point3::new(2.0, 2.0, 2.0),
             Point3::new(0.0, 0.0, 0.0),
-            Vector3::new(0.0, 0.0, 1.0)
+            Vector3::new(0.0, 0.0, 1.0) // "up vector"
         );
 
         let mut proj = cgmath::perspective(Rad::from(Deg(45.0)), dimensions[0] as f32 / dimensions[1] as f32, 0.1, 10.0);
@@ -321,6 +325,33 @@ impl Engine {
         ).unwrap()
     }
     //}}}
+    
+    fn get_textures(queue: &Arc<Queue>, world: &World) -> (Arc<ImageView<Arc<ImmutableImage>>>, CommandBufferExecFuture<NowFuture, PrimaryAutoCommandBuffer>) {
+        let (tex_bytes, dimensions) = world.objects[0].get_texture_data();
+
+        let (image, future) = ImmutableImage::from_iter(
+            tex_bytes.iter().cloned(),
+            dimensions,
+            vulkano::image::MipmapsCount::One,
+            Format::R8G8B8A8Srgb,
+            queue.clone()
+        ).unwrap();
+        
+        (ImageView::new(image).unwrap(), future)
+    }
+
+    fn get_image_sampler(device: &Arc<Device>) -> Arc<Sampler> {
+        Sampler::new(
+            device.clone(),
+            vulkano::sampler::Filter::Linear,
+            vulkano::sampler::Filter::Linear,
+            vulkano::sampler::MipmapMode::Nearest,
+            vulkano::sampler::SamplerAddressMode::Repeat,
+            vulkano::sampler::SamplerAddressMode::Repeat,
+            vulkano::sampler::SamplerAddressMode::Repeat,
+            0.0, 1.0, 0.0, 0.0
+        ).unwrap()
+    }
 
     //{{{ engine.main_loop()
     pub fn main_loop(mut self) {
@@ -401,8 +432,20 @@ impl Engine {
                     )
                     .unwrap();
 
+                    let (texture, tex_future) = Self::get_textures(&self.queue, &self.world);
+                    let sampler = Self::get_image_sampler(&self.device);
+
                     let layout = pipeline.layout().descriptor_set_layouts()[0].clone();
-                    let descriptor_set = Arc::new(
+                    let tex_set = Arc::new(
+                        PersistentDescriptorSet::start(layout.clone())
+                            .add_sampled_image(texture.clone(), sampler)
+                            .unwrap()
+                            .build()
+                            .unwrap()
+                    );
+
+                    let layout = pipeline.layout().descriptor_set_layouts()[1].clone();
+                    let ubo_set = Arc::new(
                         PersistentDescriptorSet::start(layout.clone())
                             .add_buffer(self.uniform_buffers[0].clone())
                             .unwrap()
@@ -422,9 +465,9 @@ impl Engine {
                             &dynamic_state,
                             self.vertex_buffer.clone(),
                             self.index_buffer.clone(),
-                            descriptor_set.clone(),
+                            (tex_set.clone(), ubo_set.clone()),
                             (),
-                        )
+                        ) // can be called multiple times with different data to render ui
                         .unwrap()
                         .end_render_pass()
                         .unwrap();
@@ -435,6 +478,7 @@ impl Engine {
                         .take()
                         .unwrap()
                         .join(acquire_future)
+                        .join(tex_future)
                         .then_execute(self.queue.clone(), command_buffer)
                         .unwrap()
                         .then_swapchain_present(self.queue.clone(), self.swapchain.clone(), image_num)

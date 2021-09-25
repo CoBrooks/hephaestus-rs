@@ -7,7 +7,7 @@ pub struct Vertex {
     pub normal: [f32; 3],
     pub uv: [f32; 2]
 }
-vulkano::impl_vertex!(Vertex, position, color, normal);
+vulkano::impl_vertex!(Vertex, position, color, normal, uv);
 
 #[allow(dead_code)]
 #[derive(Copy, Clone)]
