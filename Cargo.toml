@@ -1,0 +1,23 @@
+[package]
+name = "hephaestus-rs"
+version = "0.1.0"
+edition = "2018"
+
+[lib]
+name = "hephaestus_lib"
+path = "src/lib/lib.rs"
+
+[[bin]]
+name = "hephaestus_bin"
+path = "src/main.rs"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+vulkano = "*"
+vulkano-shaders = "*"
+vulkano-win = "*"
+winit = "*"
+cgmath = "*"
+obj-rs = "*"
+png = "*"
