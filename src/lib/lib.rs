@@ -4,3 +4,5 @@ pub mod primitives;
 pub mod buffer_objects;
 pub mod shaders;
 pub mod object;
+pub mod material;
+pub mod camera;

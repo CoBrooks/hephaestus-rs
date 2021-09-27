@@ -1,17 +1,20 @@
 use crate::{
     buffer_objects::*,
-    object::Viewable
+    object::Viewable,
+    camera::Camera
 };
 
 pub struct World {
     pub objects: Vec<Box<dyn Viewable>>,
+    pub camera: Camera,
     pub void_color: [f32; 4]
 }
 
 impl World {
-    pub fn new() -> Self {
+    pub fn new(camera: Camera) -> Self {
         World {
             objects: Vec::new(),
+            camera,
             void_color: [0.01; 4]
         }
     }

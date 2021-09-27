@@ -1,6 +1,6 @@
 #version 450
 
-layout(set = 1, binding = 0) uniform UniformBufferObject {
+layout(set = 0, binding = 0) uniform UniformBufferObject {
     mat4 model;
     mat4 view;
     mat4 proj;
@@ -25,6 +25,6 @@ void main() {
     fragNormal = normal;
     fragModel = ubo.model;
     fragPosition = position;
-    lightPosition = vec3(ubo.model * vec4(0.0, 1.5, 1.0, 1.0));
+    lightPosition = vec3(vec4(0.0, 1.5, 1.0, 1.0));
     texCoords = uv;
 }

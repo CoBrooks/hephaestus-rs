@@ -42,7 +42,7 @@ pub struct Engine {
     device: Arc<Device>,
     queue: Arc<Queue>,
     swapchain: Arc<Swapchain<Window>>,
-    images: Vec<Arc<SwapchainImage<Window>>>,
+    pub images: Vec<Arc<SwapchainImage<Window>>>,
     vertex_buffer: Arc<CpuAccessibleBuffer<[Vertex]>>,
     index_buffer: Arc<CpuAccessibleBuffer<[u16]>>,
     uniform_buffers: Vec<Arc<CpuAccessibleBuffer<UniformBufferObject>>>,
@@ -326,19 +326,7 @@ impl Engine {
     }
     //}}}
     
-    fn get_textures(queue: &Arc<Queue>, world: &World) -> (Arc<ImageView<Arc<ImmutableImage>>>, CommandBufferExecFuture<NowFuture, PrimaryAutoCommandBuffer>) {
-        let (tex_bytes, dimensions) = world.objects[0].get_texture_data();
 
-        let (image, future) = ImmutableImage::from_iter(
-            tex_bytes.iter().cloned(),
-            dimensions,
-            vulkano::image::MipmapsCount::One,
-            Format::R8G8B8A8Srgb,
-            queue.clone()
-        ).unwrap();
-        
-        (ImageView::new(image).unwrap(), future)
-    }
 
     fn get_image_sampler(device: &Arc<Device>) -> Arc<Sampler> {
         Sampler::new(
@@ -432,35 +420,29 @@ impl Engine {
                     )
                     .unwrap();
 
-                    let (texture, tex_future) = Self::get_textures(&self.queue, &self.world);
-                    let sampler = Self::get_image_sampler(&self.device);
-
-                    let layout = pipeline.layout().descriptor_set_layouts()[0].clone();
-                    let tex_set = Arc::new(
-                        PersistentDescriptorSet::start(layout.clone())
-                            .add_sampled_image(texture.clone(), sampler)
-                            .unwrap()
-                            .build()
-                            .unwrap()
-                    );
-
-                    let layout = pipeline.layout().descriptor_set_layouts()[1].clone();
-                    let ubo_set = Arc::new(
-                        PersistentDescriptorSet::start(layout.clone())
-                            .add_buffer(self.uniform_buffers[0].clone())
-                            .unwrap()
-                            .build()
-                            .unwrap()
-                    );
-
                     builder
                         .begin_render_pass(
                             framebuffers[image_num].clone(),
                             SubpassContents::Inline,
                             clear_values,
-                        )
-                        .unwrap()
-                        .draw_indexed(
+                        ).unwrap();
+
+                    let device = self.device.clone();
+                    self.world.objects
+                        .iter()
+                        .for_each(|o| o.add_to_render_commands(
+                                        &device,
+                                        &self.queue,
+                                        self.images[0].dimensions(),
+                                        self.swapchain.format(),
+                                        &dynamic_state,
+                                        &self.world.camera,
+                                        &mut builder
+                                        )
+                                  );
+
+                    builder
+                        /*.draw_indexed(
                             pipeline.clone(),
                             &dynamic_state,
                             self.vertex_buffer.clone(),
@@ -468,7 +450,7 @@ impl Engine {
                             (tex_set.clone(), ubo_set.clone()),
                             (),
                         ) // can be called multiple times with different data to render ui
-                        .unwrap()
+                        .unwrap() */
                         .end_render_pass()
                         .unwrap();
 
@@ -478,7 +460,7 @@ impl Engine {
                         .take()
                         .unwrap()
                         .join(acquire_future)
-                        .join(tex_future)
+                        //.join(tex_future)
                         .then_execute(self.queue.clone(), command_buffer)
                         .unwrap()
                         .then_swapchain_present(self.queue.clone(), self.swapchain.clone(), image_num)

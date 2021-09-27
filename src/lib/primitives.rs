@@ -1,11 +1,20 @@
 use std::fs;
-use std::io::Cursor;
-use vulkano::image::ImageDimensions;
-use cgmath::{ Deg, Euler, Quaternion, Vector3, Rotation };
+use std::sync::Arc;
+use std::io::{ BufReader, Cursor };
+use cgmath::{ Euler, Deg, Quaternion, Vector3, Matrix4, Rotation };
+use vulkano::image::{ ImmutableImage, ImageDimensions };
+use vulkano::command_buffer::{ AutoCommandBufferBuilder, PrimaryAutoCommandBuffer, DynamicState };
+use vulkano::buffer::{ BufferUsage, CpuAccessibleBuffer };
+use vulkano::format::Format;
+use vulkano::device::{ Device, Queue };
+use vulkano::pipeline::GraphicsPipelineAbstract;
+use vulkano::descriptor_set::persistent::PersistentDescriptorSet;
 
 use crate::{ 
     buffer_objects::Vertex,
-    object::Viewable
+    object::Viewable,
+    camera::Camera,
+    material::{ Diffuse, Material },
 };
 
 pub trait Primitive { 
@@ -13,13 +22,11 @@ pub trait Primitive {
 }
 
 //{{{ Plane
-#[derive(Clone)]
 pub struct Plane {
     pub origin: Vector3<f32>,
     pub rotation: Quaternion<f32>,
     pub scale: Vector3<f32>,
-    pub color: [f32; 3],
-    pub texture_data: Option<(Vec<u8>, ImageDimensions)>,
+    pub material: Box<dyn Material>,
     vertices: Vec<Vertex>,
 }
 
@@ -31,8 +38,7 @@ impl Plane {
             rotation: Quaternion::new(1.0, 0.0, 0.0, 0.0),
             scale: scale.into(),
             vertices: Vec::new(),
-            texture_data: None,
-            color,
+            material: Box::new(Diffuse { color, texture_data: None })
         };
         
         p.vertices = p.get_vertices();
@@ -49,29 +55,31 @@ impl Plane {
     }
     
     pub fn add_texture(&mut self, tex_path: &str) {
-        let png_bytes = fs::read(&tex_path).unwrap(); 
-        let cursor = Cursor::new(png_bytes);
-        let decoder = png::Decoder::new(cursor);
-        let mut reader = decoder.read_info().unwrap();
-        let info = reader.info();
-        let dimensions = ImageDimensions::Dim2d {
-            width: info.width,
-            height: info.height,
-            array_layers: 1
-        };
-        let mut image_data = Vec::new();
-        image_data.resize((info.width * info.height * 4) as usize, 0);
-        reader.next_frame(&mut image_data).unwrap();
+        self.material.add_texture(tex_path);
+    }
 
-        self.texture_data = Some((image_data, dimensions));
+    fn get_buffers(&self, device: &Arc<Device>) -> (Arc<CpuAccessibleBuffer<[Vertex]>>, Arc<CpuAccessibleBuffer<[u16]>>) {
+        let vertex_buffer = CpuAccessibleBuffer::from_iter(
+            device.clone(),
+            BufferUsage::all(),
+            false,
+            self.get_vertices().iter().cloned(),
+        ).unwrap();
+      
+        let index_buffer = CpuAccessibleBuffer::from_iter(
+            device.clone(),
+            BufferUsage::all(),
+            false,
+            self.get_indices().iter().cloned()
+        ).unwrap();
+
+        (vertex_buffer, index_buffer)
     }
 }
 
 impl Primitive for Plane {
     fn get_faces(&self) -> Vec<Plane> {
-        vec![
-            self.to_owned()   
-        ]
+        panic!("It's a plane...")
     }
 }
 
@@ -84,7 +92,7 @@ impl Viewable for Plane {
                     self.origin.y - self.scale.y / 2.0, 
                     self.origin.z
                 ],
-                color: self.color,
+                color: self.material.get_color(),
                 normal: [0.0, 0.0, 1.0],
                 uv: [0.0, 0.0]
             },
@@ -94,7 +102,7 @@ impl Viewable for Plane {
                     self.origin.y - self.scale.y / 2.0, 
                     self.origin.z
                 ],
-                color: self.color,
+                color: self.material.get_color(),
                 normal: [0.0, 0.0, 1.0],
                 uv: [0.0, 1.0]
             },
@@ -104,7 +112,7 @@ impl Viewable for Plane {
                     self.origin.y + self.scale.y / 2.0, 
                     self.origin.z
                 ],
-                color: self.color,
+                color: self.material.get_color(),
                 normal: [0.0, 0.0, 1.0],
                 uv: [1.0, 1.0]
             },
@@ -114,7 +122,7 @@ impl Viewable for Plane {
                     self.origin.y + self.scale.y / 2.0, 
                     self.origin.z
                 ],
-                color: self.color,
+                color: self.material.get_color(),
                 normal: [0.0, 0.0, 1.0],
                 uv: [1.0, 0.0]
             },
@@ -140,8 +148,67 @@ impl Viewable for Plane {
         ]
     }
 
-    fn get_texture_data(&self) -> (Vec<u8>, vulkano::image::ImageDimensions) {
-        self.texture_data.clone().unwrap()
+    fn add_to_render_commands(&self, 
+                              device: &Arc<Device>, 
+                              queue: &Arc<Queue>,
+                              dimensions: [u32; 2], 
+                              color_format: Format, 
+                              dynamic_state: &DynamicState, 
+                              camera: &Camera,
+                              commands: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>) 
+    {
+        let pipeline = self.material.get_pipeline(device, dimensions, color_format);
+
+        let vertex_buffer = CpuAccessibleBuffer::from_iter(
+            device.clone(),
+            BufferUsage::all(),
+            false,
+            self.get_vertices().iter().cloned(),
+        ).unwrap();
+      
+        let index_buffer = CpuAccessibleBuffer::from_iter(
+            device.clone(),
+            BufferUsage::all(),
+            false,
+            self.get_indices().iter().cloned()
+        ).unwrap();
+
+        let ubo = camera.get_ubo(Matrix4::from_translation(self.origin));
+        let ubo_layout = pipeline.layout().descriptor_set_layouts()[0].clone();
+        let ubo_buffer = CpuAccessibleBuffer::from_data(
+            device.clone(),
+            BufferUsage::uniform_buffer_transfer_destination(),
+            false,
+            ubo
+        ).unwrap();
+        let ubo_set = Arc::new(
+            PersistentDescriptorSet::start(ubo_layout.clone())
+                .add_buffer(ubo_buffer)
+                .unwrap()
+                .build()
+                .unwrap()
+        );
+
+        let (texture, _) = self.material.get_texture_buffer(queue);
+        let sampler = self.material.get_texture_sampler(device);
+        let layout = pipeline.layout().descriptor_set_layouts()[1].clone();
+        let tex_set = Arc::new(
+            PersistentDescriptorSet::start(layout.clone())
+                .add_sampled_image(texture.clone(), sampler)
+                .unwrap()
+                .build()
+                .unwrap()
+        );
+
+        commands
+            .draw_indexed(
+                pipeline.clone(),
+                &dynamic_state,
+                vertex_buffer.clone(),
+                index_buffer.clone(),
+                (ubo_set.clone(), tex_set.clone()),
+                (),
+            ).unwrap();
     }
 }
 //}}}
@@ -150,8 +217,7 @@ impl Viewable for Plane {
 pub struct Cube {
     pub origin: Vector3<f32>,
     pub scale: Vector3<f32>,
-    pub color: [f32; 3],
-    pub texture_data: Option<(Vec<u8>, ImageDimensions)>,
+    pub material: Box<dyn Material>,
     faces: Vec<Plane>,
 }
 
@@ -161,8 +227,7 @@ impl Cube {
             origin: origin.into(), 
             scale: scale.into(),
             faces: Vec::new(),
-            texture_data: None,
-            color
+            material: Box::new(Diffuse { color, texture_data: None })
         };
 
         c.faces = c.get_faces();
@@ -173,24 +238,6 @@ impl Cube {
     pub fn identity() -> Self {
         Self::new([0.0; 3], [1.0; 3], [1.0; 3])   
     }
-    
-    pub fn add_texture(&mut self, tex_path: &str) {
-        let png_bytes = fs::read(&tex_path).unwrap(); 
-        let cursor = Cursor::new(png_bytes);
-        let decoder = png::Decoder::new(cursor);
-        let mut reader = decoder.read_info().unwrap();
-        let info = reader.info();
-        let dimensions = ImageDimensions::Dim2d {
-            width: info.width,
-            height: info.height,
-            array_layers: 1
-        };
-        let mut image_data = Vec::new();
-        image_data.resize((info.width * info.height * 4) as usize, 0);
-        reader.next_frame(&mut image_data).unwrap();
-
-        self.texture_data = Some((image_data, dimensions));
-    }
 }
 
 impl Primitive for Cube {
@@ -200,44 +247,44 @@ impl Primitive for Cube {
         let mut top = Plane::new(
             [self.origin.x, self.origin.y, self.origin.z + self.scale.z / 2.0], 
             [self.scale.x, self.scale.y, 1.0], 
-            self.color
+            self.material.get_color()
         );
-        top.rotate(Euler { x: Deg(0.0), y: Deg(0.0), z: Deg(180.0) });
+        top.rotate(Euler { x: Deg(0.0), y: Deg(0.0), z: Deg(0.0) });
 
         let mut bottom = Plane::new(
             [self.origin.x, self.origin.y, self.origin.z - self.scale.z / 2.0], 
             [self.scale.x, self.scale.y, 1.0], 
-            self.color
+            self.material.get_color()
         );
         bottom.rotate(Euler { x: Deg(180.0), y: Deg(0.0), z: Deg(0.0) });
     
         let mut front = Plane::new(
             [self.origin.x - self.scale.x / 2.0, self.origin.y, self.origin.z], 
             [self.scale.x, self.scale.y, 1.0], 
-            self.color
+            self.material.get_color()
         );
-        front.rotate(Euler { x: Deg(0.0), y: Deg(90.0), z: Deg(0.0) });
+        front.rotate(Euler { x: Deg(0.0), y: Deg(-90.0), z: Deg(0.0) });
 
         let mut back = Plane::new(
             [self.origin.x + self.scale.x / 2.0, self.origin.y, self.origin.z], 
             [self.scale.x, self.scale.y, 1.0], 
-            self.color
+            self.material.get_color()
         );
-        back.rotate(Euler { x: Deg(180.0), y: Deg(-90.0), z: Deg(0.0) });
+        back.rotate(Euler { x: Deg(180.0), y: Deg(90.0), z: Deg(0.0) });
         
         let mut left = Plane::new(
             [self.origin.x, self.origin.y - self.scale.y / 2.0, self.origin.z], 
             [self.scale.x, self.scale.y, 1.0], 
-            self.color
+            self.material.get_color()
         );
-        left.rotate(Euler { x: Deg(90.0), y: Deg(0.0), z: Deg(-90.0) });
+        left.rotate(Euler { x: Deg(90.0), y: Deg(0.0), z: Deg(90.0) });
         
         let mut right = Plane::new(
             [self.origin.x, self.origin.y + self.scale.y / 2.0, self.origin.z], 
             [self.scale.x, self.scale.y, 1.0], 
-            self.color
+            self.material.get_color()
         );
-        right.rotate(Euler { x: Deg(-90.0), y: Deg(0.0), z: Deg(90.0) });
+        right.rotate(Euler { x: Deg(-90.0), y: Deg(0.0), z: Deg(-90.0) });
         
         planes.push(top);
         planes.push(bottom);
@@ -271,8 +318,71 @@ impl Viewable for Cube {
             ).collect()
     }
 
-    fn get_texture_data(&self) -> (Vec<u8>, vulkano::image::ImageDimensions) {
+    /*fn get_texture_data(&self) -> (Vec<u8>, vulkano::image::ImageDimensions) {
         self.texture_data.clone().unwrap()
+    }*/
+
+    fn add_to_render_commands(&self, 
+                              device: &Arc<Device>, 
+                              queue: &Arc<Queue>,
+                              dimensions: [u32; 2], 
+                              color_format: Format, 
+                              dynamic_state: &DynamicState, 
+                              camera: &Camera,
+                              commands: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>) 
+    {
+        let pipeline = self.material.get_pipeline(device, dimensions, color_format);
+
+        let vertex_buffer = CpuAccessibleBuffer::from_iter(
+            device.clone(),
+            BufferUsage::all(),
+            false,
+            self.get_vertices().iter().cloned(),
+        ).unwrap();
+      
+        let index_buffer = CpuAccessibleBuffer::from_iter(
+            device.clone(),
+            BufferUsage::all(),
+            false,
+            self.get_indices().iter().cloned()
+        ).unwrap();
+
+        let ubo = camera.get_ubo(Matrix4::from_translation(self.origin));
+        let ubo_layout = pipeline.layout().descriptor_set_layouts()[0].clone();
+        let ubo_buffer = CpuAccessibleBuffer::from_data(
+            device.clone(),
+            BufferUsage::uniform_buffer_transfer_destination(),
+            false,
+            ubo
+        ).unwrap();
+        let ubo_set = Arc::new(
+            PersistentDescriptorSet::start(ubo_layout.clone())
+                .add_buffer(ubo_buffer)
+                .unwrap()
+                .build()
+                .unwrap()
+        );
+
+        let (texture, _) = self.material.get_texture_buffer(queue);
+        let sampler = self.material.get_texture_sampler(device);
+        let layout = pipeline.layout().descriptor_set_layouts()[1].clone();
+        let tex_set = Arc::new(
+            PersistentDescriptorSet::start(layout.clone())
+                .add_sampled_image(texture.clone(), sampler)
+                .unwrap()
+                .build()
+                .unwrap()
+        );
+
+        commands
+            .draw_indexed(
+                pipeline.clone(),
+                &dynamic_state,
+                vertex_buffer.clone(),
+                index_buffer.clone(),
+                (ubo_set.clone(), tex_set.clone()),
+                (),
+            ).unwrap();
     }
 }
 //}}}
