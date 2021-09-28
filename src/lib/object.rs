@@ -1,39 +1,61 @@
 use std::fs::File;
-use std::sync::Arc;
 use std::io::BufReader;
 use obj::{ load_obj, Obj, TexturedVertex };
 use cgmath::{ Euler, Deg, Quaternion, Vector3, Matrix4 };
-use vulkano::command_buffer::{ AutoCommandBufferBuilder, PrimaryAutoCommandBuffer, DynamicState };
-use vulkano::buffer::{ BufferUsage, CpuAccessibleBuffer };
-use vulkano::format::Format;
-use vulkano::device::{ Device, Queue };
-use vulkano::pipeline::GraphicsPipelineAbstract;
-use vulkano::descriptor_set::persistent::PersistentDescriptorSet;
 
 use crate::{
     buffer_objects::Vertex,
-    material::{ Diffuse, Material },
-    camera::Camera
+    material::{ Diffuse, Material }
 };
 
 pub trait Viewable {
     fn get_indices(&self) -> Vec<u16>;
     fn get_vertices(&self) -> Vec<Vertex>;
-    fn get_model_matrix(&self) -> Matrix4<f32>;
-    fn add_to_render_commands(&self, 
-                              device: &Arc<Device>, 
-                              queue: &Arc<Queue>,
-                              dimensions: [u32; 2], 
-                              color_format: Format, 
-                              dynamic_state: &DynamicState, 
-                              camera: &Camera,
-                              commands: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>); 
+    fn transform_mut(&mut self) -> &mut Transform;
+    fn transform(&self) -> &Transform;
+    fn get_material(&self) -> &Box<dyn Material>; 
+}
+
+#[derive(Clone, Copy)]
+pub struct Transform {
+    pub translation: Vector3<f32>,
+    pub scale: Vector3<f32>,
+    pub rotation: Quaternion<f32>
+}
+
+impl Transform {
+    pub fn new(translation: [f32; 3], scale: [f32; 3], rotation: [Deg<f32>; 3]) -> Self {
+        Self {
+            translation: translation.into(),
+            scale: scale.into(),
+            rotation: Quaternion::from(Euler::new(rotation[0], rotation[1], rotation[2]))
+        }
+    }
+
+    pub fn translate(&mut self, translation: [f32; 3]) {
+        self.translation += Vector3::from(translation);
+    }
+
+    pub fn rotate(&mut self, rotation: [Deg<f32>; 3]) {
+        let q = Quaternion::from(Euler::new(rotation[0], rotation[1], rotation[2]));
+        self.rotation = self.rotation * q; // To "add" two rotations, you multiply the Quaternions
+    }
+
+    pub fn scale(&mut self, scale: [f32; 3]) {
+        self.scale = Vector3::new(self.scale.x * scale[0], self.scale.y * scale[1], self.scale.z * scale[2]);
+    }
+
+    pub fn model_matrix(&self) -> Matrix4<f32> {
+        // Not SRT order? - https://docs.microsoft.com/en-us/dotnet/desktop/winforms/advanced/why-transformation-order-is-significant
+        // This does get the desired result, though...
+        Matrix4::from_translation(self.translation) 
+            * Matrix4::from_nonuniform_scale(self.scale.x, self.scale.y, self.scale.z)
+            * Matrix4::from(self.rotation) 
+    }
 }
 
 pub struct Object {
-    pub origin: Vector3<f32>,
-    pub scale: Vector3<f32>,
-    pub rotation: Quaternion<f32>,
+    pub transform: Transform,
     pub model_path: String,
     pub material: Box<dyn Material>,
     object_data: Obj<TexturedVertex, u16>,
@@ -44,9 +66,11 @@ impl Object {
         let data = Object::get_object_data(&model_path);
 
         Object {
-            origin: origin.into(),
-            scale: scale.into(),
-            rotation: Quaternion::new(1.0, 0.0, 0.0, 0.0),
+            transform: Transform::new(
+                origin.into(),
+                scale.into(),
+                [Deg(0.0), Deg(0.0), Deg(0.0)]
+            ),
             model_path,
             material: Box::new(Diffuse::new(color)),
             object_data: data
@@ -56,10 +80,6 @@ impl Object {
     fn get_object_data(model_path: &str) -> Obj<TexturedVertex, u16> {
         let input = BufReader::new(File::open(&model_path).expect(&format!("Error loading model file: {}", model_path)));
         load_obj(input).expect(&format!("Error reading model data: {}", model_path))
-    }
-    
-    pub fn rotate(&mut self, r: Euler<Deg<f32>>) {
-        self.rotation = r.into();
     }
 }
 
@@ -76,81 +96,18 @@ impl Viewable for Object {
                 color: self.material.get_color(),
                 uv: [v.texture[0], v.texture[1]]
             })
-            .map(|v| Vertex {
-                position: [
-                    self.origin[0] + (v.position[0] - self.origin[0]) * self.scale[0],
-                    self.origin[1] + (v.position[1] - self.origin[1]) * self.scale[1],
-                    self.origin[2] + (v.position[2] - self.origin[2]) * self.scale[2],
-                ],
-                ..v
-            })
             .collect()
     }
 
-    fn get_model_matrix(&self) -> Matrix4<f32> {
-        Matrix4::from_translation(self.origin)
+    fn get_material(&self) -> &Box<dyn Material> {
+        &self.material
     }
 
-    fn add_to_render_commands(&self, 
-                              device: &Arc<Device>, 
-                              queue: &Arc<Queue>,
-                              dimensions: [u32; 2], 
-                              color_format: Format, 
-                              dynamic_state: &DynamicState, 
-                              camera: &Camera,
-                              commands: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>) 
-    {
-        let pipeline = self.material.get_pipeline(device, dimensions, color_format);
-
-        let vertex_buffer = CpuAccessibleBuffer::from_iter(
-            device.clone(),
-            BufferUsage::all(),
-            false,
-            self.get_vertices().iter().cloned(),
-        ).unwrap();
-      
-        let index_buffer = CpuAccessibleBuffer::from_iter(
-            device.clone(),
-            BufferUsage::all(),
-            false,
-            self.get_indices().iter().cloned()
-        ).unwrap();
-
-        let ubo = camera.get_ubo(Matrix4::from_translation(self.origin));
-        let ubo_layout = pipeline.layout().descriptor_set_layouts()[0].clone();
-        let ubo_buffer = CpuAccessibleBuffer::from_data(
-            device.clone(),
-            BufferUsage::uniform_buffer_transfer_destination(),
-            false,
-            ubo
-        ).unwrap();
-        let ubo_set = Arc::new(
-            PersistentDescriptorSet::start(ubo_layout.clone())
-                .add_buffer(ubo_buffer)
-                .unwrap()
-                .build()
-                .unwrap()
-        );
-
-        let (texture, _) = self.material.get_texture_buffer(queue);
-        let sampler = self.material.get_texture_sampler(device);
-        let layout = pipeline.layout().descriptor_set_layouts()[1].clone();
-        let tex_set = Arc::new(
-            PersistentDescriptorSet::start(layout.clone())
-                .add_sampled_image(texture.clone(), sampler)
-                .unwrap()
-                .build()
-                .unwrap()
-        );
-
-        commands
-            .draw_indexed(
-                pipeline.clone(),
-                &dynamic_state,
-                vertex_buffer.clone(),
-                index_buffer.clone(),
-                (ubo_set.clone(), tex_set.clone()),
-                (),
-            ).unwrap();
+    fn transform_mut(&mut self) -> &mut Transform {
+        &mut self.transform
+    }
+    
+    fn transform(&self) -> &Transform {
+        &self.transform
     }
 }

@@ -22,7 +22,7 @@ use vulkano::Version;
 use vulkano_win::VkSurfaceBuild;
 use winit::event_loop::EventLoop;
 use winit::window::{ Window, WindowBuilder };
-use cgmath::{ Rad, Deg, perspective, Transform };
+use cgmath::{ Rad, Deg, perspective };
 
 use crate::{
     buffer_objects::*,
@@ -64,7 +64,7 @@ pub struct Renderer {
     render_stage: RenderStage,
     commands: Option<AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>>,
     img_index: usize,
-    acquire_future: Option<SwapchainAcquireFuture<Window>>
+    acquire_future: Option<SwapchainAcquireFuture<Window>>,
 }
 
 impl Renderer {
@@ -328,12 +328,12 @@ impl Renderer {
             render_stage,
             commands,
             img_index,
-            acquire_future
+            acquire_future,
         }
     }
     //}}}
 
-    pub fn start(&mut self) {
+    pub fn start(&mut self, clear_color: [f32; 4]) {
         match self.render_stage {
             RenderStage::Stopped => {
                 self.render_stage = RenderStage::Deferred;
@@ -367,7 +367,7 @@ impl Renderer {
             return;
         }
 
-        let clear_values = vec![[0.0, 0.0, 0.0, 1.0].into(), [0.0, 0.0, 0.0, 1.0].into(), [0.0, 0.0, 0.0, 1.0].into(), 1f32.into()];
+        let clear_values = vec![clear_color.into(), clear_color.into(), clear_color.into(), 1f32.into()];
 
         let mut commands = AutoCommandBufferBuilder::primary(self.device.clone(), self.queue.family(), CommandBufferUsage::OneTimeSubmit).unwrap();
         commands
@@ -396,11 +396,11 @@ impl Renderer {
         }
 
         let model_buffer = {
-            let model_matrix = model.get_model_matrix();
+            let model_matrix = model.transform().model_matrix();
 
             let uniform_data = ModelBufferObject {
                 model: model_matrix.clone(),
-                normals: model_matrix.clone().inverse_transform().unwrap()
+                normals: model_matrix.clone()
             };
 
             self.model_buffer.next(uniform_data).unwrap()
@@ -427,6 +427,18 @@ impl Renderer {
             model.get_indices().iter().cloned()
         ).unwrap();
 
+        let (texture, mut texture_future) = model.get_material().get_texture_buffer(&self.queue);
+        let sampler = model.get_material().get_texture_sampler(&self.device);
+        let layout = self.deferred_pipeline.layout().descriptor_set_layouts().get(2).unwrap();
+        let tex_set = Arc::new(
+            PersistentDescriptorSet::start(layout.clone())
+                .add_sampled_image(texture.clone(), sampler)
+                .unwrap()
+                .build()
+                .unwrap()
+        );
+        texture_future.cleanup_finished();
+
         let mut commands = self.commands.take().unwrap();
         commands
             .draw_indexed(
@@ -434,7 +446,7 @@ impl Renderer {
                 &self.dynamic_state,
                 vec![vertex_buffer.clone()],
                 index_buffer.clone(),
-                vec![self.vp_set.clone(), model_set.clone()],
+                vec![self.vp_set.clone(), model_set.clone(), tex_set.clone()],
                 (),
             ).unwrap();
         self.commands = Some(commands);
