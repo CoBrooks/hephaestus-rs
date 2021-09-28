@@ -148,6 +148,10 @@ impl Viewable for Plane {
         ]
     }
 
+    fn get_model_matrix(&self) -> Matrix4<f32> {
+        Matrix4::from_translation(self.origin)
+    }
+
     fn add_to_render_commands(&self, 
                               device: &Arc<Device>, 
                               queue: &Arc<Queue>,
@@ -316,6 +320,10 @@ impl Viewable for Cube {
                 .map(|i| i + i_per_face * index as u16)
                 .collect::<Vec<u16>>()
             ).collect()
+    }
+
+    fn get_model_matrix(&self) -> Matrix4<f32> {
+        Matrix4::from_translation(self.origin)
     }
 
     /*fn get_texture_data(&self) -> (Vec<u8>, vulkano::image::ImageDimensions) {

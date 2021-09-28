@@ -6,3 +6,5 @@ pub mod shaders;
 pub mod object;
 pub mod material;
 pub mod camera;
+pub mod light;
+pub mod renderer;

@@ -1,10 +1,8 @@
-use std::fs;
 use std::fs::File;
 use std::sync::Arc;
-use std::io::{ BufReader, Cursor };
+use std::io::BufReader;
 use obj::{ load_obj, Obj, TexturedVertex };
 use cgmath::{ Euler, Deg, Quaternion, Vector3, Matrix4 };
-use vulkano::image::{ ImmutableImage, ImageDimensions };
 use vulkano::command_buffer::{ AutoCommandBufferBuilder, PrimaryAutoCommandBuffer, DynamicState };
 use vulkano::buffer::{ BufferUsage, CpuAccessibleBuffer };
 use vulkano::format::Format;
@@ -15,13 +13,13 @@ use vulkano::descriptor_set::persistent::PersistentDescriptorSet;
 use crate::{
     buffer_objects::Vertex,
     material::{ Diffuse, Material },
-    shaders::{ VertShader, FragShader },
     camera::Camera
 };
 
 pub trait Viewable {
     fn get_indices(&self) -> Vec<u16>;
     fn get_vertices(&self) -> Vec<Vertex>;
+    fn get_model_matrix(&self) -> Matrix4<f32>;
     fn add_to_render_commands(&self, 
                               device: &Arc<Device>, 
                               queue: &Arc<Queue>,
@@ -50,12 +48,9 @@ impl Object {
             scale: scale.into(),
             rotation: Quaternion::new(1.0, 0.0, 0.0, 0.0),
             model_path,
-            material: Box::new(Diffuse { 
-                texture_data: None,
-                color
-            }),
+            material: Box::new(Diffuse::new(color)),
             object_data: data
-        }
+        } 
     }
 
     fn get_object_data(model_path: &str) -> Obj<TexturedVertex, u16> {
@@ -90,6 +85,10 @@ impl Viewable for Object {
                 ..v
             })
             .collect()
+    }
+
+    fn get_model_matrix(&self) -> Matrix4<f32> {
+        Matrix4::from_translation(self.origin)
     }
 
     fn add_to_render_commands(&self, 

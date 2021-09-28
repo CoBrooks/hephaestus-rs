@@ -21,6 +21,7 @@ pub trait Material {
     fn get_pipeline(&self, device: &Arc<Device>, dimensions: [u32; 2], color_format: Format) -> Arc<GraphicsPipeline<BuffersDefinition>>;
     fn get_render_pass(&self, device: &Arc<Device>, color_format: Format) -> Arc<RenderPass>;
     fn add_texture(&mut self, tex_path: &str);
+    fn has_texture(&self) -> bool;
     fn get_texture_buffer(&self, queue: &Arc<Queue>) -> (Arc<ImageView<Arc<ImmutableImage>>>, CommandBufferExecFuture<NowFuture, PrimaryAutoCommandBuffer>);
     fn get_texture_sampler(&self, device: &Arc<Device>) -> Arc<Sampler>;
 }
@@ -28,6 +29,18 @@ pub trait Material {
 pub struct Diffuse {
     pub color: [f32; 3],
     pub texture_data: Option<(Vec<u8>, ImageDimensions)>,
+}
+
+impl Diffuse {
+    pub fn new(color: [f32; 3]) -> Self {
+        let mut d = Diffuse {
+            color,
+            texture_data: None
+        };
+        d.add_texture("models/textures/null_texture.png");
+
+        d
+    }
 }
 
 impl Material for Diffuse { 
@@ -120,9 +133,13 @@ impl Material for Diffuse {
         self.texture_data = Some((image_data, dimensions));
     }
 
+    fn has_texture(&self) -> bool {
+        self.texture_data.is_some()
+    }
+
     fn get_texture_buffer(&self, queue: &Arc<Queue>) -> (Arc<ImageView<Arc<ImmutableImage>>>, CommandBufferExecFuture<NowFuture, PrimaryAutoCommandBuffer>) {
         let (tex_bytes, dimensions) = self.texture_data.as_ref().unwrap();
-
+        
         let (image, future) = ImmutableImage::from_iter(
             tex_bytes.iter().cloned(),
             *dimensions,

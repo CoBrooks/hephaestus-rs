@@ -5,17 +5,17 @@ use hephaestus_lib::{
     world::World,
     primitives::{ Plane, Cube },
     object::*,
-    material::*,
-    camera::Camera
+    camera::Camera,
+    light::DirectionalLight
 };
 
 fn main() {
-    let mut world = World::new(Camera::default([-1.0, -1.0, 0.0], [1200, 1600]));
+    let mut world = World::new(Camera::default([0.0, 4.0, 0.0]));
     
-    let mut monkey_1 = Object::new([0.0, -1.0, 0.0], [0.5; 3], [1.0; 3], "models/monke.obj".into());
-    monkey_1.material.add_texture("models/monke_tex.png");
+    let monkey_1 = Object::new([0.2, 0.0, 0.0], [0.2; 3], [1.0; 3], "models/monke.obj".into());
+    // monkey_1.material.add_texture("models/monke_tex.png");
 
-    let mut monkey_2 = Object::new([0.0, 0.0, 0.0], [0.2; 3], [1.0; 3], "models/monke.obj".into());
+    let mut monkey_2 = Object::new([-0.2, 0.0, 0.0], [0.2; 3], [1.0, 0.0, 1.0], "models/monke.obj".into());
     monkey_2.material.add_texture("models/textures/obamium.png");
 
     let mut plane = Plane::new([0.0, -2.0, 0.0], [1.0; 3], [0.5, 1.0, 1.0]);
@@ -25,15 +25,15 @@ fn main() {
     let mut cube = Cube::new([0.0, 0.0, 0.0], [0.2; 3], [1.0; 3]);
     cube.material.add_texture("models/textures/amogus.png");
     
-    world.new_object(cube);
-    //world.new_object(plane);
-    //world.new_object(monkey_1);
-    //world.new_object(monkey_2);
+    let light = DirectionalLight::new([-4.0, -4.0, 0.0, 1.0], [0.4, 0.4, 0.4]);
     
-    //let mut cube = Cube::identity();
-    //cube.add_texture("models/textures/obamium.png");
-
     //world.new_object(cube);
+    //world.new_object(plane);
+    world.add_object(Box::new(monkey_1));
+    world.add_object(Box::new(monkey_2));
+    
+    world.add_light(light);
+
     let engine = Engine::initialize(world);
-    engine.main_loop();
+    engine.start();
 }

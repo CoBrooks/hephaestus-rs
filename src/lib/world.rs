@@ -1,11 +1,13 @@
 use crate::{
     buffer_objects::*,
     object::Viewable,
-    camera::Camera
+    camera::Camera,
+    light::DirectionalLight
 };
 
 pub struct World {
     pub objects: Vec<Box<dyn Viewable>>,
+    pub lights: Vec<DirectionalLight>,
     pub camera: Camera,
     pub void_color: [f32; 4]
 }
@@ -14,13 +16,18 @@ impl World {
     pub fn new(camera: Camera) -> Self {
         World {
             objects: Vec::new(),
+            lights: Vec::new(),
             camera,
             void_color: [0.01; 4]
         }
     }
 
-    pub fn new_object<T>(&mut self, object: T) where T: Viewable + 'static {
-        self.objects.push(Box::new(object));
+    pub fn add_object(&mut self, object: Box<dyn Viewable>) {
+        self.objects.push(object);
+    }
+
+    pub fn add_light(&mut self, light: DirectionalLight) {
+        self.lights.push(light);
     }
 
     pub fn get_vertices(&self) -> Vec<Vertex> {
