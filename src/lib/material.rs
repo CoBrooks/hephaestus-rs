@@ -16,6 +16,7 @@ pub trait Material {
     fn get_texture_sampler(&self, device: &Arc<Device>) -> Arc<Sampler>;
 }
 
+#[derive(Clone)]
 pub struct Diffuse {
     color: [f32; 3],
     texture_data: Option<(Vec<u8>, ImageDimensions)>,

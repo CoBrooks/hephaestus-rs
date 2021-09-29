@@ -1,13 +1,11 @@
-use cgmath::Deg;
+use cgmath::{ Deg, Matrix4, Vector3 };
 use crate::{ 
     buffer_objects::Vertex,
     object::{ Transform, Viewable },
     material::{ Diffuse, Material },
 };
 
-pub trait Primitive { 
-    fn get_faces(&self) -> Vec<Plane>;
-}
+pub trait Primitive: Viewable { }
 
 //{{{ Plane
 pub struct Plane {
@@ -43,11 +41,7 @@ impl Plane {
     }
 }
 
-impl Primitive for Plane {
-    fn get_faces(&self) -> Vec<Plane> {
-        panic!("It's a plane...")
-    }
-}
+impl Primitive for Plane { }
 
 impl Viewable for Plane {
     fn get_vertices(&self) -> Vec<Vertex> {
@@ -104,24 +98,18 @@ impl Viewable for Plane {
 pub struct Cube {
     pub transform: Transform,
     pub material: Box<dyn Material>,
-    faces: Vec<Plane>,
 }
 
 impl Cube {
     pub fn new(origin: [f32; 3], scale: [f32; 3], color: [f32; 3]) -> Self{
-        let mut c = Cube {
+        Cube {
             transform: Transform::new(
                 origin.into(),
                 scale.into(),
                 [Deg(0.0), Deg(0.0), Deg(0.0)]
             ), 
-            faces: Vec::new(),
             material: Box::new(Diffuse::new(color))
-        };
-
-        c.faces = c.get_faces();
-
-        c
+        } 
     }
 
     pub fn identity() -> Self {
@@ -129,76 +117,53 @@ impl Cube {
     }
 }
 
-impl Primitive for Cube {
-    fn get_faces(&self) -> Vec<Plane> {
-        let mut planes: Vec<Plane> = Vec::new();
-
-        let mut top = Plane::new([0.0, 0.0, 0.0], [1.0; 3], [1.0, 0.0, 0.0]);
-        top.transform.translate([0.0, 0.0, 0.5]);
-        top.transform.rotate([Deg(0.0), Deg(0.0), Deg(0.0)]);
-
-        let mut bottom = Plane::new([0.0, 0.0, 0.0], [1.0; 3], [0.0, 1.0, 0.0]);
-        bottom.transform.translate([0.0, 0.0, 0.6]);
-        bottom.transform.rotate([Deg(0.0), Deg(0.0), Deg(0.0)]);
-    
-        let mut front = Plane::new(
-            [self.transform.translation.x - self.transform.scale.x / 2.0, self.transform.translation.y, self.transform.translation.z], 
-            [self.transform.scale.x, self.transform.scale.y, 1.0], 
-            self.material.get_color()
-        );
-        front.transform.rotate([Deg(0.0), Deg(90.0), Deg(0.0)]);
-
-        let mut back = Plane::new(
-            [self.transform.translation.x + self.transform.scale.x / 2.0, self.transform.translation.y, self.transform.translation.z], 
-            [self.transform.scale.x, self.transform.scale.y, 1.0], 
-            self.material.get_color()
-        );
-        back.transform.rotate([Deg(180.0), Deg(90.0), Deg(0.0)]);
-        
-        let mut left = Plane::new(
-            [self.transform.translation.x, self.transform.translation.y - self.transform.scale.y / 2.0, self.transform.translation.z], 
-            [self.transform.scale.x, self.transform.scale.y, 1.0], 
-            self.material.get_color()
-        );
-        left.transform.rotate([Deg(90.0), Deg(0.0), Deg(90.0)]);
-        
-        let mut right = Plane::new(
-            [self.transform.translation.x, self.transform.translation.y + self.transform.scale.y / 2.0, self.transform.translation.z], 
-            [self.transform.scale.x, self.transform.scale.y, 1.0], 
-            self.material.get_color()
-        );
-        right.transform.rotate([Deg(-90.0), Deg(0.0), Deg(-90.0)]);
-        
-        planes.push(top);
-        planes.push(bottom);
-        //planes.push(front);
-        //planes.push(back);
-        //planes.push(left);
-        //planes.push(right);
-
-        planes
-    }
-}
-
 impl Viewable for Cube {
     fn get_vertices(&self) -> Vec<Vertex> {
-        self.get_faces().iter()
-            .flat_map(|p| p.get_vertices())
-            .collect()
+        let color = self.material.get_color();
+
+        vec![
+            // Top
+            Vertex { position: [-1.0, -1.0, 1.0],  color, normal: [0.0, 0.0, 1.0],  uv: [0.0, 0.0] }, // Back-Left
+            Vertex { position: [1.0, -1.0, 1.0],   color, normal: [0.0, 0.0, 1.0],  uv: [1.0, 0.0] }, // Back-Right
+            Vertex { position: [1.0, 1.0, 1.0],    color, normal: [0.0, 0.0, 1.0],  uv: [1.0, 1.0] }, // Front-Right
+            Vertex { position: [-1.0, 1.0, 1.0],   color, normal: [0.0, 0.0, 1.0],  uv: [0.0, 1.0] }, // Front-Left
+            // Bottom
+            Vertex { position: [-1.0, -1.0, -1.0], color, normal: [0.0, 0.0, -1.0], uv: [1.0, 1.0] }, // Back-Left
+            Vertex { position: [1.0, -1.0, -1.0],  color, normal: [0.0, 0.0, -1.0], uv: [0.0, 1.0] }, // Back-Right
+            Vertex { position: [1.0, 1.0, -1.0],   color, normal: [0.0, 0.0, -1.0], uv: [0.0, 0.0] }, // Front-Right
+            Vertex { position: [-1.0, 1.0, -1.0],  color, normal: [0.0, 0.0, -1.0], uv: [1.0, 0.0] }, // Front-Left
+            // Front
+            Vertex { position: [-1.0, 1.0, 1.0],   color, normal: [0.0, 1.0, 0.0], uv: [1.0, 1.0] }, // Top-Left
+            Vertex { position: [1.0, 1.0, 1.0],    color, normal: [0.0, 1.0, 0.0], uv: [0.0, 1.0] }, // Top-Right
+            Vertex { position: [1.0, 1.0, -1.0],   color, normal: [0.0, 1.0, 0.0], uv: [0.0, 0.0] }, // Bottom-Right
+            Vertex { position: [-1.0, 1.0, -1.0],  color, normal: [0.0, 1.0, 0.0], uv: [1.0, 0.0] }, // Bottom-Left
+            // Back
+            Vertex { position: [-1.0, -1.0, 1.0],  color, normal: [0.0, -1.0, 0.0],  uv: [0.0, 1.0] }, // Top-Left     
+            Vertex { position: [1.0, -1.0, 1.0],   color, normal: [0.0, -1.0, 0.0],  uv: [1.0, 1.0] }, // Top-Right    
+            Vertex { position: [1.0, -1.0, -1.0],  color, normal: [0.0, -1.0, 0.0],  uv: [1.0, 0.0] }, // Bottom-Right 
+            Vertex { position: [-1.0, -1.0, -1.0], color, normal: [0.0, -1.0, 0.0],  uv: [0.0, 0.0] }, // Bottom-Left  
+            // Left
+            Vertex { position: [-1.0, 1.0, 1.0],   color, normal: [-1.0, 0.0, 0.0], uv: [0.0, 1.0] }, // Top-Front     
+            Vertex { position: [-1.0, -1.0, 1.0],  color, normal: [-1.0, 0.0, 0.0], uv: [1.0, 1.0] }, // Top-Back    
+            Vertex { position: [-1.0, -1.0, -1.0], color, normal: [-1.0, 0.0, 0.0], uv: [1.0, 0.0] }, // Bottom-Back  
+            Vertex { position: [-1.0, 1.0, -1.0],  color, normal: [-1.0, 0.0, 0.0], uv: [0.0, 0.0] }, // Bottom-Front 
+            // Right
+            Vertex { position: [1.0, 1.0, 1.0],    color, normal: [1.0, 0.0, 0.0], uv: [1.0, 1.0] }, // Top-Front     
+            Vertex { position: [1.0, -1.0, 1.0],   color, normal: [1.0, 0.0, 0.0], uv: [0.0, 1.0] }, // Top-Back    
+            Vertex { position: [1.0, -1.0, -1.0],  color, normal: [1.0, 0.0, 0.0], uv: [0.0, 0.0] }, // Bottom-Back  
+            Vertex { position: [1.0, 1.0, -1.0],   color, normal: [1.0, 0.0, 0.0], uv: [1.0, 0.0] }, // Bottom-Front 
+        ]
     }
 
     fn get_indices(&self) -> Vec<u16> {
-        let i_per_face: u16 = 4;
-
-        self.get_faces()
-            .iter()
-            .map(|f| f.get_indices())
-            .enumerate()
-            .flat_map(|(index, indices)|
-                indices.iter()
-                .map(|i| i + i_per_face * index as u16)
-                .collect::<Vec<u16>>()
-            ).collect()
+        vec![
+            0,  1,  2,  2,  3,  0,
+            4,  5,  6,  6,  7,  4,
+            8,  9,  10, 10, 11, 8,
+            12, 15, 14, 14, 13, 12,
+            16, 19, 18, 18, 17, 16,
+            20, 21, 22, 22, 23, 20
+        ]
     }
 
     fn get_material(&self) -> &Box<dyn Material> {
