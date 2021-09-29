@@ -9,8 +9,8 @@ use crate::{
 };
 
 pub trait Viewable {
-    fn get_indices(&self) -> Vec<u16>;
-    fn get_vertices(&self) -> Vec<Vertex>;
+    fn get_indices(&self) -> &Vec<u16>;
+    fn get_vertices(&self) -> &Vec<Vertex>;
     fn transform_mut(&mut self) -> &mut Transform;
     fn transform(&self) -> &Transform;
     fn get_material(&self) -> &Box<dyn Material>; 
@@ -58,12 +58,24 @@ pub struct Object {
     pub transform: Transform,
     pub model_path: String,
     pub material: Box<dyn Material>,
-    object_data: Obj<TexturedVertex, u16>,
+    vertices: Vec<Vertex>,
+    indices: Vec<u16>
 }
 
 impl Object {
     pub fn new(origin: [f32; 3], scale: [f32; 3], color: [f32; 3], model_path: String) -> Self {
         let data = Object::get_object_data(&model_path);
+
+        let indices = data.indices.clone();
+        let vertices: Vec<Vertex> = data.vertices.iter()
+            .map(|v| Vertex {
+                position: v.position,
+                normal: v.normal,
+                color,
+                uv: [v.texture[0], v.texture[1]]
+            })
+            .collect();
+
 
         Object {
             transform: Transform::new(
@@ -73,7 +85,8 @@ impl Object {
             ),
             model_path,
             material: Box::new(Diffuse::new(color)),
-            object_data: data
+            vertices,
+            indices
         } 
     }
 
@@ -84,19 +97,12 @@ impl Object {
 }
 
 impl Viewable for Object {
-    fn get_indices(&self) -> Vec<u16> {
-        self.object_data.indices.clone()
+    fn get_indices(&self) -> &Vec<u16> {
+        &self.indices
     }
 
-    fn get_vertices(&self) -> Vec<Vertex> {
-        self.object_data.vertices.iter()
-            .map(|v| Vertex {
-                position: v.position,
-                normal: v.normal,
-                color: self.material.get_color(),
-                uv: [v.texture[0], v.texture[1]]
-            })
-            .collect()
+    fn get_vertices(&self) -> &Vec<Vertex> {
+        &self.vertices
     }
 
     fn get_material(&self) -> &Box<dyn Material> {
