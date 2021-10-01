@@ -11,6 +11,19 @@ pub struct World {
     pub void_color: [f32; 4]
 }
 
+impl Clone for World {
+    fn clone(&self) -> Self {
+        Self {
+            objects: self.objects.iter()
+                .map(|o| o.boxed_clone())
+                .collect(),
+            lights: self.lights.clone(),
+            camera: self.camera.clone(),
+            void_color: self.void_color.clone()
+        }
+    }
+}
+
 impl World {
     pub fn new(camera: Camera) -> Self {
         World {

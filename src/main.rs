@@ -1,45 +1,52 @@
+use std::sync::Arc;
+use cgmath::Deg;
+
 use hephaestus_lib::{
-    engine::Engine,
+    engine::{ Engine, EngineTime },
     world::World,
     primitives::{ Plane, Cube, Sphere },
     object::*,
     camera::Camera,
-    light::DirectionalLight
+    light::DirectionalLight,
 };
 
 fn main() {
     let mut world = World::new(Camera::default([2.0, 2.0, 2.0]));
     
-    let mut monkey_1 = Object::new([-2.0, 0.0, 0.0], [0.2; 3], [0.4, 0.4, 0.4], "models/suzanne.obj".into());
+    let mut monkey_1 = Object::new([0.0, 0.0, 0.0], [0.5; 3], [1.0; 3], "models/suzanne.obj".into());
     monkey_1.material.add_texture("models/textures/monkey_texture.png");
+    monkey_1.add_update(Box::new(|m: &mut Object, _: &World, time: &EngineTime| {
+        m.transform.rotate([Deg(0.0), Deg(0.0), Deg(1.0)]);
 
-    let monkey_2 = Object::new([-2.0, 0.0, 0.3], [0.1; 3], [1.0, 1.0, 1.0], "models/suzanne_smooth.obj".into());
-
-    let mut plane_1 = Plane::identity();
-    plane_1.material.add_texture("models/textures/color.png");
-
+        let r = time.total_time.sin().abs();
+        let g = (time.total_time + 2.09).sin().abs();
+        let b = (time.total_time + 4.18).sin().abs();
+        let new_color = [r, g, b];
+        
+        m.material.set_color(new_color);
+        m.transform.scale = [r; 3].into();
+    }));
+    
     let mut cube_1 = Cube::identity();
-    cube_1.transform.scale = [0.2; 3].into();
-    //cube_1.material.add_texture("models/textures/color.png");
-    
-    let sphere = Sphere::new([0.0; 3], [0.2; 3], [1.0; 3], 3);
-    // sphere.material.add_texture("models/textures/color.png");
-    
-    // let r_light = DirectionalLight::new([-0.3, -0.3, 1.0, 1.0], [1.0, 0.0, 0.0]);
-    // let g_light = DirectionalLight::new([0.3, -0.3, 1.0, 1.0], [0.0, 1.0, 0.0]);
-    // let b_light = DirectionalLight::new([0.0, 1.0, 1.0, 1.0], [0.0, 0.0, 1.0]);
+    cube_1.add_update(Box::new(extern_update));
 
     let white_light = DirectionalLight::new([1.0, 2.0, 1.0, 1.0], [0.5, 0.5, 0.5]);
   
-    world.add_object(Box::new(monkey_1));
-    world.add_object(Box::new(monkey_2));
-    world.add_object(Box::new(sphere));
+    world.add_object(Box::new(cube_1));
     
-    // world.add_light(r_light);
-    // world.add_light(g_light);
-    // world.add_light(b_light);
     world.add_light(white_light);
 
     let engine = Engine::initialize(world);
     engine.start();
+}
+
+fn extern_update(object: &mut Cube, _: &World, time: &EngineTime) {
+    object.transform.rotate([Deg(0.0), Deg(0.0), Deg(1.0)]);
+
+    let r = time.total_time.sin().abs();
+    let g = (time.total_time + 2.09).sin().abs();
+    let b = (time.total_time + 4.18).sin().abs();
+    let new_color = [r, g, b];
+    object.material.set_color(new_color);
+    object.transform.scale = [r; 3].into();
 }

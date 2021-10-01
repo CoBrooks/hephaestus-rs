@@ -8,12 +8,28 @@ use vulkano::sampler::Sampler;
 use vulkano::command_buffer::{ PrimaryAutoCommandBuffer, CommandBufferExecFuture };
 use vulkano::sync::NowFuture;
 
-pub trait Material {
+pub trait Material: MaterialClone {
     fn get_color(&self) -> [f32; 3];
+    fn set_color(&mut self, color: [f32; 3]);
     fn add_texture(&mut self, tex_path: &str);
-    fn has_texture(&self) -> bool;
     fn get_texture_buffer(&self, queue: &Arc<Queue>) -> (Arc<ImageView<Arc<ImmutableImage>>>, CommandBufferExecFuture<NowFuture, PrimaryAutoCommandBuffer>);
     fn get_texture_sampler(&self, device: &Arc<Device>) -> Arc<Sampler>;
+}
+
+pub trait MaterialClone {
+    fn boxed_clone(&self) -> Box<dyn Material>;
+}
+
+impl<M: 'static> MaterialClone for M where M: Material + Clone {
+    fn boxed_clone(&self) -> Box<dyn Material> {
+        Box::new(self.clone())
+    }
+}
+
+impl Clone for Box<dyn Material> {
+    fn clone(&self) -> Self {
+        self.boxed_clone()
+    }
 }
 
 #[derive(Clone)]
@@ -38,6 +54,10 @@ impl Material for Diffuse {
     fn get_color(&self) -> [f32; 3] {
         self.color
     }
+
+    fn set_color(&mut self, color: [f32; 3]) {
+        self.color = color;
+    }
    
     fn add_texture(&mut self, tex_path: &str) {
         let png_bytes = fs::read(&tex_path).unwrap(); 
@@ -56,11 +76,7 @@ impl Material for Diffuse {
 
         self.texture_data = Some((image_data, dimensions));
     }
-
-    fn has_texture(&self) -> bool {
-        self.texture_data.is_some()
-    }
-
+    
     fn get_texture_buffer(&self, queue: &Arc<Queue>) -> (Arc<ImageView<Arc<ImmutableImage>>>, CommandBufferExecFuture<NowFuture, PrimaryAutoCommandBuffer>) {
         let (tex_bytes, dimensions) = self.texture_data.as_ref().unwrap();
         

@@ -1,7 +1,6 @@
 use std::time::Instant;
 use winit::event_loop::{ ControlFlow, EventLoop };
 use winit::event::{ Event, WindowEvent };
-use cgmath::Deg;
 
 use crate::{
     world::*,
@@ -17,6 +16,11 @@ pub struct Engine {
     start_of_last_frame: Instant,
     delta_time: f32,
     total_time: f32,
+}
+
+pub struct EngineTime {
+    pub delta_time: f32,
+    pub total_time: f32
 }
 
 impl Engine {
@@ -58,12 +62,14 @@ impl Engine {
 
                     self.renderer.start(self.world.void_color);
                     
-                    for i in 0..self.world.objects.len() {
-                        self.world.objects[i].transform_mut().rotate([Deg(0.0), Deg(0.0), Deg(-60.0 * self.delta_time)]); //.scale = [s / 2.0; 3].into();
-                        // self.world.objects[i].transform_mut().translate([self.delta_time * 0.5, 0.0, 0.0]);
-                        // let s = self.start_time.elapsed().as_secs_f32().cos().abs() + 0.01;
-                        // self.world.objects[i].transform_mut().scale = [s / 4.0; 3].into();
+                    let world_clone = self.world.clone();
+                    let time = EngineTime { 
+                        delta_time: self.delta_time,
+                        total_time: self.total_time
+                    };
 
+                    for i in 0..self.world.objects.len() {
+                        self.world.objects[i].update(&world_clone, &time);
                         self.renderer.geometry(self.world.objects[i].as_ref());
                     }
 

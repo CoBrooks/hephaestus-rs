@@ -1,16 +1,21 @@
+use std::sync::Arc;
 use cgmath::{ Deg, Vector3, InnerSpace };
 use crate::{ 
     buffer_objects::Vertex,
     object::{ Transform, Viewable },
     material::{ Diffuse, Material },
+    world::World,
+    engine::EngineTime
 };
 
 pub trait Primitive: Viewable { }
 
 //{{{ Plane
+#[derive(Clone)]
 pub struct Plane {
     pub transform: Transform,
     pub material: Box<dyn Material>,
+    update_function: Arc<dyn Fn(&Self, &World, &EngineTime) -> Self>,
     vertices: Vec<Vertex>,
     indices: Vec<u16>
 }
@@ -24,6 +29,7 @@ impl Plane {
                 scale.into(),
                 [Deg(0.0), Deg(0.0), Deg(0.0)]
             ), 
+            update_function: Arc::new(|o: &Self, _, _|{ o.clone() }),
             vertices: Vec::new(),
             indices: Vec::new(),
             material: Box::new(Diffuse::new(color))
@@ -35,6 +41,17 @@ impl Plane {
 
     pub fn identity() -> Self {
         Self::new([0.0; 3], [1.0; 3], [1.0; 3])
+    }
+    
+    pub fn add_update(&mut self, update: Box<dyn Fn(&mut Self, &World, &EngineTime)>) {
+        // Allows the `add_update` method signature to be nicer to the end user
+        let f = move |object: &Self, world: &World, time: &EngineTime| { 
+            let mut o = object.clone(); // `object` is essentially `&self` when called later by `update`
+            update(&mut o, world, time);// update self.clone() with the user-defined function
+            o                           // return the updated value, which will then be assigned to `self` later
+        };
+
+        self.update_function = Arc::new(f); // Arc instead of Box so that Object: Clone
     }
 
     pub fn load_data(&mut self) {
@@ -72,10 +89,6 @@ impl Plane {
 
         println!("Created plane.")
     }
-    
-    pub fn add_texture(&mut self, tex_path: &str) {
-        self.material.add_texture(tex_path);
-    }
 }
 
 impl Primitive for Plane { }
@@ -99,13 +112,19 @@ impl Viewable for Plane {
     fn transform(&self) -> &Transform {
         &self.transform
     }
+
+    fn update(&mut self, world: &World, time: &EngineTime) {
+        *self = (self.update_function)(&self, world, time); 
+    }
 }
 //}}}
 
 //{{{ Cube
+#[derive(Clone)]
 pub struct Cube {
     pub transform: Transform,
-    pub material: Box<dyn Material>,
+    pub material: Box<dyn Material>, 
+    update_function: Arc<dyn Fn(&Self, &World, &EngineTime) -> Self>,
     vertices: Vec<Vertex>,
     indices: Vec<u16>,
 }
@@ -118,6 +137,7 @@ impl Cube {
                 scale.into(),
                 [Deg(0.0), Deg(0.0), Deg(0.0)]
             ), 
+            update_function: Arc::new(|o: &Self, _, _|{ o.clone() }),
             material: Box::new(Diffuse::new(color)),
             vertices: Vec::new(),
             indices: Vec::new()
@@ -129,6 +149,17 @@ impl Cube {
 
     pub fn identity() -> Self {
         Self::new([0.0; 3], [1.0; 3], [1.0; 3])   
+    }
+
+    pub fn add_update(&mut self, update: Box<dyn Fn(&mut Self, &World, &EngineTime)>) {
+        // Allows the `add_update` method signature to be nicer to the end user
+        let f = move |object: &Self, world: &World, time: &EngineTime| { 
+            let mut o = object.clone(); // `object` is essentially `&self` when called later by `update`
+            update(&mut o, world, time);// update self.clone() with the user-defined function
+            o                           // return the updated value, which will then be assigned to `self` later
+        };
+
+        self.update_function = Arc::new(f); // Arc instead of Box so that Object: Clone
     }
 
     fn load_data(&mut self) {
@@ -200,13 +231,19 @@ impl Viewable for Cube {
     fn transform(&self) -> &Transform {
         &self.transform
     }
+
+    fn update(&mut self, world: &World, time: &EngineTime) {
+        *self = (self.update_function)(&self, world, time); 
+    }
 }
 //}}}
 
 //{{{ Sphere
+#[derive(Clone)]
 pub struct Sphere {
     pub transform: Transform,
     pub material: Box<dyn Material>,
+    update_function: Arc<dyn Fn(&Self, &World, &EngineTime) -> Self>,
     resolution: u8,
     vertices: Vec<Vertex>,
     indices: Vec<u16>
@@ -219,7 +256,8 @@ impl Sphere {
                 origin.into(),
                 scale.into(),
                 [Deg(0.0), Deg(0.0), Deg(0.0)]
-            ), 
+            ),
+            update_function: Arc::new(|o: &Self, _, _|{ o.clone() }),
             material: Box::new(Diffuse::new(color)),
             resolution,
             vertices: Vec::new(),
@@ -232,6 +270,17 @@ impl Sphere {
 
     pub fn identity() -> Self {
         Self::new([0.0; 3], [1.0; 3], [1.0; 3], 3)   
+    }
+    
+    pub fn add_update(&mut self, update: Box<dyn Fn(&mut Self, &World, &EngineTime)>) {
+        // Allows the `add_update` method signature to be nicer to the end user
+        let f = move |object: &Self, world: &World, time: &EngineTime| { 
+            let mut o = object.clone(); // `object` is essentially `&self` when called later by `update`
+            update(&mut o, world, time);// update self.clone() with the user-defined function
+            o                           // return the updated value, which will then be assigned to `self` later
+        };
+
+        self.update_function = Arc::new(f); // Arc instead of Box so that Object: Clone
     }
 
     fn load_data(&mut self) { 
@@ -341,5 +390,9 @@ impl Viewable for Sphere {
 
     fn transform_mut(&mut self) -> &mut Transform {
         &mut self.transform
+    }
+
+    fn update(&mut self, world: &World, time: &EngineTime) {
+        *self = (self.update_function)(&self, world, time); 
     }
 }

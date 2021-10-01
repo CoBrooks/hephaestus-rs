@@ -412,12 +412,20 @@ impl Renderer {
                 .add_buffer(model_buffer.clone()).unwrap()
                 .build().unwrap()
         );
+        
+        // Make sure vertex color is up-to-date (allows dynamically changing color in update loop)
+        let model_color = model.get_material().get_color();
+        let vertices: Vec<Vertex> = model.get_vertices()
+            .clone()
+            .iter()
+            .map(|&v| Vertex { color: model_color, ..v })
+            .collect();
 
         let vertex_buffer = CpuAccessibleBuffer::from_iter(
             self.device.clone(),
             BufferUsage::all(),
             false,
-            model.get_vertices().iter().cloned()
+            vertices.iter().cloned()
         ).unwrap();
 
         let index_buffer = CpuAccessibleBuffer::from_iter(
