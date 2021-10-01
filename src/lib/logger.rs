@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::cell::RefCell;
 use std::time::SystemTime;
+use chrono::{ DateTime, Local };
 use colored::*;
 
 #[derive(PartialEq, Eq, Clone)]
@@ -15,7 +16,8 @@ pub enum LogLevel {
 pub enum MessageEmitter {
     Object(String),
     Engine,
-    Renderer
+    Renderer,
+    World
 }
 
 #[derive(Clone)]
@@ -40,24 +42,28 @@ impl Message {
         let emitter = match &self.emitter {
             MessageEmitter::Object(e) => e,
             MessageEmitter::Engine => "Engine",
-            MessageEmitter::Renderer => "Renderer"
+            MessageEmitter::Renderer => "Renderer",
+            MessageEmitter::World => "World"
         };
+
+        let time: DateTime<Local> = self.time.into();
+        let time_str = time.format("%H:%M:%S%.3f");
 
         match self.level {
             LogLevel::Debug => { 
-                let msg = format!("DEBUG [{} | {:?}]: {}", emitter, self.time, self.content).dimmed();
+                let msg = format!("DEBUG [{} | {}]: {}", emitter, time_str, self.content).dimmed();
                 println!("{}", msg);
             },
             LogLevel::Info => { 
-                let msg = format!("INFO [{} | {:?}]: {}", emitter, self.time, self.content);
+                let msg = format!("INFO [{} | {}]: {}", emitter, time_str, self.content);
                 println!("{}", msg);
             },
             LogLevel::Warning => { 
-                let msg = format!("WARNING [{} | {:?}]: {}", emitter, self.time, self.content).yellow();
+                let msg = format!("WARNING [{} | {}]: {}", emitter, time_str, self.content).yellow();
                 println!("{}", msg);
             },
             LogLevel::Error => { 
-                let msg = format!("ERROR [{} | {:?}]: {}", emitter, self.time, self.content).red();
+                let msg = format!("ERROR [{} | {}]: {}", emitter, time_str, self.content).red();
                 println!("{}", msg);
             },
         }
@@ -69,33 +75,33 @@ pub struct Log {
 }
 
 pub trait Logger {
-    fn log_debug(&self, content: String, emitter: MessageEmitter);
-    fn log_info(&self, content: String, emitter: MessageEmitter);
-    fn log_warning(&self, content: String, emitter: MessageEmitter);
-    fn log_error(&self, content: String, emitter: MessageEmitter);
+    fn log_debug(&self, content: &str, emitter: MessageEmitter);
+    fn log_info(&self, content: &str, emitter: MessageEmitter);
+    fn log_warning(&self, content: &str, emitter: MessageEmitter);
+    fn log_error(&self, content: &str, emitter: MessageEmitter);
     fn log(&self, message: Message);
     fn get_level(&self, level: LogLevel) -> Option<Vec<Message>>;
     fn filter_messages(&self, filter: &dyn Fn(&&Message) -> bool) -> Option<Vec<Message>>;
 }
 
 impl Logger for RefCell<Log> {
-    fn log_debug(&self, content: String, emitter: MessageEmitter) {
-        let msg = Message::new(content, LogLevel::Debug, emitter);
+    fn log_debug(&self, content: &str, emitter: MessageEmitter) {
+        let msg = Message::new(content.into(), LogLevel::Debug, emitter);
         self.log(msg);
     }
     
-    fn log_info(&self, content: String, emitter: MessageEmitter) {
-        let msg = Message::new(content, LogLevel::Info, emitter);
+    fn log_info(&self, content: &str, emitter: MessageEmitter) {
+        let msg = Message::new(content.into(), LogLevel::Info, emitter);
         self.log(msg);
     }
     
-    fn log_warning(&self, content: String, emitter: MessageEmitter) {
-        let msg = Message::new(content, LogLevel::Warning, emitter);
+    fn log_warning(&self, content: &str, emitter: MessageEmitter) {
+        let msg = Message::new(content.into(), LogLevel::Warning, emitter);
         self.log(msg);
     }
 
-    fn log_error(&self, content: String, emitter: MessageEmitter) {
-        let msg = Message::new(content, LogLevel::Error, emitter);
+    fn log_error(&self, content: &str, emitter: MessageEmitter) {
+        let msg = Message::new(content.into(), LogLevel::Error, emitter);
         self.log(msg);
     }
 

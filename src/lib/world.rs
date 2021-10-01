@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use crate::{
     object::Viewable,
     camera::Camera,
-    light::DirectionalLight
+    light::DirectionalLight,
+    logger::*
 };
 
 pub struct World {
@@ -30,6 +31,8 @@ impl Clone for World {
 
 impl World {
     pub fn new(camera: Camera) -> Self {
+        APP_LOGGER.log_debug("Instantiating world.", MessageEmitter::World);
+        
         World {
             objects: Vec::new(),
             object_dict: HashMap::new(),
@@ -39,7 +42,12 @@ impl World {
         }
     }
 
-    pub fn add_object(&mut self, name: &str, object: Box<dyn Viewable>) {
+    pub fn add_object(&mut self, name: &str, mut object: Box<dyn Viewable>) {
+        object.set_name(name.into());
+
+        let msg = format!("Adding \"{}\" (from '{}') to world.", name, object.get_model_path());
+        APP_LOGGER.log_debug(&msg, MessageEmitter::World);
+        
         self.objects.push(object);
         self.object_dict.insert(name.into(), self.objects.len());
     }
@@ -53,6 +61,8 @@ impl World {
     }
 
     pub fn add_light(&mut self, light: DirectionalLight) {
+        APP_LOGGER.log_debug("Adding directional light to world.", MessageEmitter::World);
+        
         self.lights.push(light);
     }
 }

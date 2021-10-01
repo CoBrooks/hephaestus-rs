@@ -9,7 +9,7 @@ use crate::{
     material::{ Diffuse, Material },
     world::World,
     engine::EngineTime,
-    logger::{ APP_LOGGER, Logger }
+    logger::{ APP_LOGGER, Logger, MessageEmitter }
 };
 
 pub trait Viewable: ViewableClone {
@@ -19,6 +19,8 @@ pub trait Viewable: ViewableClone {
     fn transform(&self) -> &Transform;
     fn get_material(&self) -> &Box<dyn Material>; 
     fn update(&mut self, world: &World, time: &EngineTime);
+    fn set_name(&mut self, name: String);
+    fn get_model_path(&self) -> String;
 }
 
 pub trait ViewableClone {
@@ -80,6 +82,7 @@ pub struct Object {
     pub transform: Transform,
     pub model_path: String,
     pub material: Box<dyn Material>,
+    pub name: String,
     update_function: Arc<dyn Fn(&Self, &World, &EngineTime) -> Self>,
     vertices: Vec<Vertex>,
     indices: Vec<u16>
@@ -87,18 +90,21 @@ pub struct Object {
 
 impl Object {
     pub fn new(origin: [f32; 3], scale: [f32; 3], color: [f32; 3], model_path: String) -> Self {
-        let data = Object::get_object_data(&model_path);
+        let (indices, vertices) = if let Some(data) = Object::get_object_data(&model_path) {
+            let indices = data.indices.clone();
+            let vertices: Vec<Vertex> = data.vertices.iter()
+                .map(|v| Vertex {
+                    position: v.position,
+                    normal: v.normal,
+                    color,
+                    uv: [v.texture[0], v.texture[1]]
+                })
+                .collect();
 
-        let indices = data.indices.clone();
-        let vertices: Vec<Vertex> = data.vertices.iter()
-            .map(|v| Vertex {
-                position: v.position,
-                normal: v.normal,
-                color,
-                uv: [v.texture[0], v.texture[1]]
-            })
-            .collect();
-
+            (indices, vertices)
+        } else {
+            (Vec::new(), Vec::new())
+        };
 
         Object {
             transform: Transform::new(
@@ -108,15 +114,28 @@ impl Object {
             ),
             model_path,
             material: Box::new(Diffuse::new(color)),
+            name: String::new(),
             update_function: Arc::new(|o: &Object, _, _|{ o.clone() }),
             vertices,
             indices
         } 
     }
 
-    fn get_object_data(model_path: &str) -> Obj<TexturedVertex, u16> {
-        let input = BufReader::new(File::open(&model_path).expect(&format!("Error loading model file: {}", model_path)));
-        load_obj(input).expect(&format!("Error reading model data: {}", model_path))
+    fn get_object_data(model_path: &str) -> Option<Obj<TexturedVertex, u16>> {
+        if let Some(file) = File::open(&model_path).ok() {
+            let input = BufReader::new(file);
+            
+            if let Some(obj) = load_obj(input).ok() {
+                APP_LOGGER.log_debug(&format!("Loaded OBJ data from '{}'", model_path), MessageEmitter::Object("Object Initializer".into()));
+                Some(obj)
+            } else {
+                APP_LOGGER.log_error(&format!("Failed to load OBJ data from '{}'", model_path), MessageEmitter::Object("Object Initializer".into()));
+                None
+            }
+        } else {
+            APP_LOGGER.log_error(&format!("Cannot open file '{}'", model_path), MessageEmitter::Object("Object Initializer".into()));
+            None
+        }
     }
 
     pub fn add_update(&mut self, update: Box<dyn Fn(&mut Self, &World, &EngineTime)>) {
@@ -155,5 +174,13 @@ impl Viewable for Object {
     fn update(&mut self, world: &World, time: &EngineTime) {
         // "This object (self) now equals the returned value of the update function when called with itself"
         *self = (self.update_function)(&self, world, time); 
+    }
+
+    fn set_name(&mut self, name: String) {
+        self.name = name;
+    }
+
+    fn get_model_path(&self) -> String {
+        self.model_path.clone()
     }
 }

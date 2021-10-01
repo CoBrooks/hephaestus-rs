@@ -8,6 +8,7 @@ use hephaestus_lib::{
     object::*,
     camera::Camera,
     light::DirectionalLight,
+    logger::*
 };
 
 fn main() {
@@ -31,8 +32,13 @@ fn main() {
     cube_1.add_update(Box::new(extern_update));
 
     let white_light = DirectionalLight::new([1.0, 2.0, 1.0, 1.0], [0.5, 0.5, 0.5]);
+
+    APP_LOGGER.log_debug("debug", MessageEmitter::World);
+    APP_LOGGER.log_info("info", MessageEmitter::World);
+    APP_LOGGER.log_warning("warning", MessageEmitter::World);
+    APP_LOGGER.log_error("error", MessageEmitter::World);
   
-    world.add_object("cube", Box::new(cube_1));
+    world.add_object("monkey", Box::new(monkey_1));
     
     world.add_light(white_light);
 

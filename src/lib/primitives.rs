@@ -5,7 +5,8 @@ use crate::{
     object::{ Transform, Viewable },
     material::{ Diffuse, Material },
     world::World,
-    engine::EngineTime
+    engine::EngineTime,
+    logger::*
 };
 
 pub trait Primitive: Viewable { }
@@ -15,6 +16,7 @@ pub trait Primitive: Viewable { }
 pub struct Plane {
     pub transform: Transform,
     pub material: Box<dyn Material>,
+    pub name: String,
     update_function: Arc<dyn Fn(&Self, &World, &EngineTime) -> Self>,
     vertices: Vec<Vertex>,
     indices: Vec<u16>
@@ -23,12 +25,15 @@ pub struct Plane {
 #[allow(dead_code)]
 impl Plane {
     pub fn new(origin: [f32; 3], scale: [f32; 3], color: [f32; 3]) -> Self {
+        APP_LOGGER.log_debug("Creating plane.", MessageEmitter::Object("Object Initializer".into()));
+
         let mut p = Plane {
             transform: Transform::new(
                 origin.into(),
                 scale.into(),
                 [Deg(0.0), Deg(0.0), Deg(0.0)]
             ), 
+            name: String::new(),
             update_function: Arc::new(|o: &Self, _, _|{ o.clone() }),
             vertices: Vec::new(),
             indices: Vec::new(),
@@ -116,6 +121,14 @@ impl Viewable for Plane {
     fn update(&mut self, world: &World, time: &EngineTime) {
         *self = (self.update_function)(&self, world, time); 
     }
+
+    fn set_name(&mut self, name: String) {
+        self.name = name;
+    }
+
+    fn get_model_path(&self) -> String {
+        "[primitive]".into()
+    }
 }
 //}}}
 
@@ -124,6 +137,7 @@ impl Viewable for Plane {
 pub struct Cube {
     pub transform: Transform,
     pub material: Box<dyn Material>, 
+    pub name: String,
     update_function: Arc<dyn Fn(&Self, &World, &EngineTime) -> Self>,
     vertices: Vec<Vertex>,
     indices: Vec<u16>,
@@ -131,12 +145,15 @@ pub struct Cube {
 
 impl Cube {
     pub fn new(origin: [f32; 3], scale: [f32; 3], color: [f32; 3]) -> Self{
+        APP_LOGGER.log_debug("Creating cube.", MessageEmitter::Object("Object Initializer".into()));
+
         let mut c = Cube {
             transform: Transform::new(
                 origin.into(),
                 scale.into(),
                 [Deg(0.0), Deg(0.0), Deg(0.0)]
             ), 
+            name: String::new(),
             update_function: Arc::new(|o: &Self, _, _|{ o.clone() }),
             material: Box::new(Diffuse::new(color)),
             vertices: Vec::new(),
@@ -206,8 +223,6 @@ impl Cube {
             16, 19, 18, 18, 17, 16,
             20, 21, 22, 22, 23, 20
         ];
-
-        println!("Created cube");
     }
 }
 
@@ -235,6 +250,14 @@ impl Viewable for Cube {
     fn update(&mut self, world: &World, time: &EngineTime) {
         *self = (self.update_function)(&self, world, time); 
     }
+    
+    fn set_name(&mut self, name: String) {
+        self.name = name;
+    }
+
+    fn get_model_path(&self) -> String {
+        "[primitive]".into()
+    }
 }
 //}}}
 
@@ -243,6 +266,7 @@ impl Viewable for Cube {
 pub struct Sphere {
     pub transform: Transform,
     pub material: Box<dyn Material>,
+    pub name: String,
     update_function: Arc<dyn Fn(&Self, &World, &EngineTime) -> Self>,
     resolution: u8,
     vertices: Vec<Vertex>,
@@ -251,12 +275,15 @@ pub struct Sphere {
 
 impl Sphere {
     pub fn new(origin: [f32; 3], scale: [f32; 3], color: [f32; 3], resolution: u8) -> Self{
+        APP_LOGGER.log_debug("Creating sphere", MessageEmitter::Object("Object Initilizer".into()));
+
         let mut s = Sphere {
             transform: Transform::new(
                 origin.into(),
                 scale.into(),
                 [Deg(0.0), Deg(0.0), Deg(0.0)]
             ),
+            name: String::new(),
             update_function: Arc::new(|o: &Self, _, _|{ o.clone() }),
             material: Box::new(Diffuse::new(color)),
             resolution,
@@ -394,5 +421,13 @@ impl Viewable for Sphere {
 
     fn update(&mut self, world: &World, time: &EngineTime) {
         *self = (self.update_function)(&self, world, time); 
+    }
+    
+    fn set_name(&mut self, name: String) {
+        self.name = name;
+    }
+
+    fn get_model_path(&self) -> String {
+        "[primitive]".into()
     }
 }
