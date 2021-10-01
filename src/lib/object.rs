@@ -8,7 +8,8 @@ use crate::{
     buffer_objects::Vertex,
     material::{ Diffuse, Material },
     world::World,
-    engine::EngineTime
+    engine::EngineTime,
+    logger::{ APP_LOGGER, Logger }
 };
 
 pub trait Viewable: ViewableClone {
@@ -27,6 +28,12 @@ pub trait ViewableClone {
 impl<V: 'static> ViewableClone for V where V: Viewable + Clone {
     fn boxed_clone(&self) -> Box<dyn Viewable> {
         Box::new(self.clone())
+    }
+}
+
+impl Clone for Box<dyn Viewable> {
+    fn clone(&self) -> Self {
+        self.boxed_clone()
     }
 }
 

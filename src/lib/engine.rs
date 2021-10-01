@@ -5,6 +5,7 @@ use winit::event::{ Event, WindowEvent };
 use crate::{
     world::*,
     renderer::Renderer,
+    logger::{ APP_LOGGER, Logger, MessageEmitter }
 };
 
 #[allow(dead_code)]
@@ -82,7 +83,6 @@ impl Engine {
                     self.renderer.finish(&mut previous_frame_end);
 
                     self.delta_time = (Instant::now() - self.start_of_last_frame).as_secs_f32();
-                    println!("FPS: {:?}", self.delta_time.recip().round());
 
                     self.start_of_last_frame = Instant::now();
                     self.total_time = self.start_time.elapsed().as_secs_f32();

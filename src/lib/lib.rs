@@ -8,3 +8,5 @@ pub mod material;
 pub mod camera;
 pub mod light;
 pub mod renderer;
+#[macro_use]
+pub mod logger;
