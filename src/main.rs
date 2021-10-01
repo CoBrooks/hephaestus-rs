@@ -32,7 +32,7 @@ fn main() {
 
     let white_light = DirectionalLight::new([1.0, 2.0, 1.0, 1.0], [0.5, 0.5, 0.5]);
   
-    world.add_object(Box::new(cube_1));
+    world.add_object("cube", Box::new(cube_1));
     
     world.add_light(white_light);
 

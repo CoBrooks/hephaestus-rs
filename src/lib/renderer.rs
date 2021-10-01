@@ -276,7 +276,7 @@ impl Renderer {
 
         let dummy_verts = CpuAccessibleBuffer::from_iter(
             device.clone(),
-            BufferUsage::all(),
+            BufferUsage::vertex_buffer(),
             false,
             DummyVertex::list().iter().cloned()
         ).unwrap();
@@ -423,14 +423,14 @@ impl Renderer {
 
         let vertex_buffer = CpuAccessibleBuffer::from_iter(
             self.device.clone(),
-            BufferUsage::all(),
+            BufferUsage::vertex_buffer(),
             false,
             vertices.iter().cloned()
         ).unwrap();
 
         let index_buffer = CpuAccessibleBuffer::from_iter(
             self.device.clone(),
-            BufferUsage::all(),
+            BufferUsage::index_buffer(),
             false,
             model.get_indices().iter().cloned()
         ).unwrap();
