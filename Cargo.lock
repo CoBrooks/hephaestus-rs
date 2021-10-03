@@ -545,16 +545,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "egui_winit_platform"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "88948d8fb4d705616358487982d29c8960183ba76a6ea91971651e186592977f"
-dependencies = [
- "egui",
- "winit",
-]
-
-[[package]]
 name = "egui_winit_vulkano"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -666,7 +656,6 @@ dependencies = [
  "chrono",
  "colored",
  "egui",
- "egui_winit_platform",
  "egui_winit_vulkano",
  "obj-rs",
  "png 0.17.1",

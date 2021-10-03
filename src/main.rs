@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use cgmath::Deg;
+use winit::event_loop::EventLoop;
 
 use hephaestus_lib::{
     engine::{ Engine, EngineTime },
@@ -13,6 +13,7 @@ use hephaestus_lib::{
 
 fn main() {
     let mut world = World::new(Camera::default([2.0, 2.0, 2.0]));
+    world.void_color = [0.01, 0.01, 0.01, 1.0];
     
     let mut monkey_1 = Object::new([0.0, 0.0, 0.0], [0.5; 3], [1.0; 3], "models/suzanne.obj".into());
     monkey_1.material.add_texture("models/textures/monkey_texture.png");
@@ -33,17 +34,14 @@ fn main() {
 
     let white_light = DirectionalLight::new([1.0, 2.0, 1.0, 1.0], [0.5, 0.5, 0.5]);
 
-    APP_LOGGER.log_debug("debug", MessageEmitter::World);
-    APP_LOGGER.log_info("info", MessageEmitter::World);
-    APP_LOGGER.log_warning("warning", MessageEmitter::World);
-    APP_LOGGER.log_error("error", MessageEmitter::World);
-  
     world.add_object("monkey", Box::new(monkey_1));
     
     world.add_light(white_light);
 
-    let engine = Engine::initialize(world);
-    engine.start();
+    let event_loop = EventLoop::with_user_event();
+
+    let engine = Engine::initialize(world, &event_loop);
+    engine.start(event_loop);
 }
 
 fn extern_update(object: &mut Cube, _: &World, time: &EngineTime) {

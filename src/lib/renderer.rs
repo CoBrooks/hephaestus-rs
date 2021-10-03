@@ -1,13 +1,12 @@
 #![allow(dead_code)]
 use std::sync::Arc;
-use std::mem;
 use vulkano::buffer::{ BufferUsage, CpuAccessibleBuffer, CpuBufferPool, cpu_pool::CpuBufferPoolSubbuffer };
 use vulkano::command_buffer::{ AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, PrimaryAutoCommandBuffer, SubpassContents };
 use vulkano::descriptor_set::{ DescriptorSet, PersistentDescriptorSet };
 use vulkano::device::{ Device, Queue, DeviceExtensions };
 use vulkano::device::physical::{ PhysicalDevice, PhysicalDeviceType };
 use vulkano::format::Format;
-use vulkano::image::{ ImageAccess, ImageUsage };
+use vulkano::image::ImageAccess;
 use vulkano::image::attachment::AttachmentImage;
 use vulkano::image::swapchain::SwapchainImage;
 use vulkano::image::view::ImageView;
@@ -17,7 +16,7 @@ use vulkano::pipeline::blend::{ AttachmentBlend, BlendFactor, BlendOp };
 use vulkano::pipeline::{ GraphicsPipeline, GraphicsPipelineAbstract };
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::render_pass::{ Framebuffer, FramebufferAbstract, RenderPass, Subpass };
-use vulkano::swapchain::{ ColorSpace, FullscreenExclusive, PresentMode, Surface, SurfaceTransform, Swapchain, SwapchainAcquireFuture, SwapchainCreationError };
+use vulkano::swapchain::{ FullscreenExclusive, PresentMode, Surface, SurfaceTransform, Swapchain, SwapchainAcquireFuture, SwapchainCreationError };
 use vulkano::sync::{ FlushError, GpuFuture };
 use vulkano::Version;
 use vulkano_win::VkSurfaceBuild;
@@ -76,7 +75,7 @@ impl Renderer {
     pub fn new(event_loop: &EventLoop<()>, camera: Camera) -> Self {
         let instance = { 
             let ext = vulkano_win::required_extensions();
-            Instance::new(None, Version::V1_1, &ext, None).unwrap()
+            Instance::new(None, Version::V1_2, &ext, None).unwrap()
         };
 
         let device_ext = DeviceExtensions { khr_swapchain: true, ..DeviceExtensions::none() };
@@ -382,7 +381,7 @@ impl Renderer {
             return;
         }
 
-        let clear_values = vec![clear_color.into(), clear_color.into(), clear_color.into(), 1f32.into()];
+        let clear_values = vec![[0.0; 4].into(), clear_color.into(), clear_color.into(), 1f32.into()];
 
         let mut commands = AutoCommandBufferBuilder::primary(self.device.clone(), self.queue.family(), CommandBufferUsage::OneTimeSubmit).unwrap();
         commands
@@ -594,10 +593,6 @@ impl Renderer {
             Err(e) => APP_LOGGER.log_error(&format!("{:?}", e), MessageEmitter::Renderer)
         }
 
-        // let mut local_future: Option<Box<dyn GpuFuture>> = Some(Box::new(vulkano::sync::now(self.device.clone())) as Box<dyn GpuFuture>);
-        
-        // mem::swap(&mut local_future, previous_frame_end);
-        
         let future = previous_frame_end.take().unwrap().join(after_future)
             .then_swapchain_present(self.queue.clone(), self.swapchain.clone(), self.img_index)
             .then_signal_fence_and_flush();
@@ -638,6 +633,7 @@ impl Renderer {
         self.framebuffers = new_framebuffers;
         self.color_buffer = new_color_buffer;
         self.normal_buffer = new_normal_buffer;
+        self.final_images = new_images.into_iter().map(|i| ImageView::new(i).unwrap()).collect();
 
         self.vp_buffer = CpuAccessibleBuffer::from_data(self.device.clone(), BufferUsage::all(), false, self.camera.get_vp_buffer(dimensions)).unwrap();
 

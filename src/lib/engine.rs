@@ -13,7 +13,6 @@ use crate::{
 pub struct Engine {
     pub world: World,
     pub renderer: Renderer,
-    event_loop: EventLoop<()>,
     start_time: Instant,
     start_of_last_frame: Instant,
     delta_time: f32,
@@ -26,12 +25,11 @@ pub struct EngineTime {
 }
 
 impl Engine {
-    pub fn initialize(world: World) -> Self {
+    pub fn initialize(world: World, event_loop: &EventLoop<()>) -> Self {
         let start_time = Instant::now();
         let start_of_last_frame = Instant::now();
     
-        let event_loop = EventLoop::new();
-        let renderer = Renderer::new(&event_loop, world.camera);
+        let renderer = Renderer::new(event_loop, world.camera);
 
         let delta_time = 0.0;
         let total_time = 0.0;
@@ -39,7 +37,6 @@ impl Engine {
         Self {
             world,
             renderer,
-            event_loop,
             start_time,
             start_of_last_frame,
             delta_time,
@@ -47,11 +44,10 @@ impl Engine {
         }
     }
 
-    pub fn start(mut self) {
+    pub fn start(mut self, event_loop: EventLoop<()>) {
         let mut gui = Gui::new(self.renderer.surface.clone(), self.renderer.queue.clone(), true);
 
         let mut previous_frame_end: Option<Box<dyn vulkano::sync::GpuFuture>> = Some(Box::new(vulkano::sync::now(self.renderer.device.clone())));
-        let event_loop = EventLoop::new();
 
         event_loop.run(move |event, _, control_flow| {
             gui.update(&event);
@@ -67,16 +63,14 @@ impl Engine {
                     gui.immediate_ui(|gui| {
                         let ctx = gui.context();
 
-                        egui::TopBottomPanel::top("top_panel").show(&ctx, |ui| {
-                            ui.add(egui::Label::new("What is going on"));
-                            ui.label("Huh");
-                            if ui.button("Button?").clicked(){
+                        egui::TopBottomPanel::bottom("Bottom Panel").show(&ctx, |ui| {
+                            if ui.button("Button").clicked(){
                                 APP_LOGGER.log_info("Button clicked", MessageEmitter::Engine);
                             }
                         });
 
                         egui::Window::new("Window").show(&ctx, |ui| {
-                            ui.label("Something?")
+                            ui.label("A Label inside of a window.")
                         });
                     });
 
@@ -109,6 +103,9 @@ impl Engine {
                     self.start_of_last_frame = Instant::now();
                     self.total_time = self.start_time.elapsed().as_secs_f32();
                 },
+                Event::RedrawRequested(_) => {
+                    self.renderer.surface.window().request_redraw();
+                }
                 _ => ()
             }
         })
