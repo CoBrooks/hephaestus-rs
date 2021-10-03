@@ -7,6 +7,7 @@ use vulkano::descriptor_set::{ DescriptorSet, PersistentDescriptorSet };
 use vulkano::device::{ Device, Queue, DeviceExtensions };
 use vulkano::device::physical::{ PhysicalDevice, PhysicalDeviceType };
 use vulkano::format::Format;
+use vulkano::image::{ ImageAccess, ImageUsage };
 use vulkano::image::attachment::AttachmentImage;
 use vulkano::image::swapchain::SwapchainImage;
 use vulkano::image::view::ImageView;
@@ -23,13 +24,15 @@ use vulkano_win::VkSurfaceBuild;
 use winit::event_loop::EventLoop;
 use winit::window::{ Window, WindowBuilder };
 use cgmath::{ Rad, Deg, perspective };
+use egui_winit_vulkano::Gui;
 
 use crate::{
     buffer_objects::*,
     camera::Camera,
     shaders::{ deferred, directional, ambient },
     object::Viewable,
-    light::DirectionalLight
+    light::DirectionalLight,
+    logger::*
 };
 
 enum RenderStage {
@@ -42,9 +45,10 @@ enum RenderStage {
 
 pub struct Renderer {
     instance: Arc<Instance>,
-    surface: Arc<Surface<Window>>,
+    pub surface: Arc<Surface<Window>>,
     pub device: Arc<Device>,
-    queue: Arc<Queue>,
+    pub queue: Arc<Queue>,
+    pub final_images: Vec<Arc<ImageView<Arc<SwapchainImage<Window>>>>>,
     camera: Camera,
     swapchain: Arc<Swapchain<Window>>,
     vp_buffer: Arc<CpuAccessibleBuffer<VPBufferObject>>,
@@ -99,6 +103,8 @@ impl Renderer {
                 }
             }).unwrap();
 
+        APP_LOGGER.log_debug(&format!("Using device: {} (type: {:?})", physical.properties().device_name, physical.properties().device_type), MessageEmitter::Renderer);
+
         let queue_family = physical.queue_families().find(|&q| {
             q.supports_graphics() && surface.is_supported(q).unwrap_or(false)
         }).unwrap();
@@ -114,13 +120,18 @@ impl Renderer {
 
         let (swapchain, images) = {
             let caps = surface.capabilities(physical).unwrap();
-            let usage = caps.supported_usage_flags;
+            let mut usage = caps.supported_usage_flags;
+            usage.depth_stencil_attachment = false;
+            usage.storage = false;
+
+            let (format, color_space) = caps.supported_formats[0];
             let alpha = caps.supported_composite_alpha.iter().next().unwrap();
             let dimensions: [u32; 2] = surface.window().inner_size().into();
 
             Swapchain::start(device.clone(), surface.clone())
                 .num_images(caps.min_image_count)
                 .dimensions(dimensions)
+                .format(format)
                 .layers(1)
                 .usage(usage)
                 .sharing_mode(&queue)
@@ -129,7 +140,7 @@ impl Renderer {
                 .present_mode(PresentMode::Fifo)
                 .fullscreen_exclusive(FullscreenExclusive::Default)
                 .clipped(true)
-                .color_space(ColorSpace::SrgbNonLinear)
+                .color_space(color_space)
                 .build()
                 .unwrap()
         };
@@ -303,7 +314,10 @@ impl Renderer {
         let commands = None;
         let img_index = 0;
         let acquire_future = None;
-
+        
+        let images =
+            images.into_iter().map(|image| ImageView::new(image).unwrap()).collect::<Vec<_>>();
+        
         Self {
             instance,
             surface,
@@ -329,6 +343,7 @@ impl Renderer {
             commands,
             img_index,
             acquire_future,
+            final_images: images
         }
     }
     //}}}
@@ -546,7 +561,7 @@ impl Renderer {
         self.commands = Some(commands);
     }
 
-    pub fn finish(&mut self, previous_frame_end: &mut Option<Box<dyn GpuFuture>>) {
+    pub fn finish(&mut self, previous_frame_end: &mut Option<Box<dyn GpuFuture>>, gui: &mut Gui) {
         match self.render_stage {
             RenderStage::Directional => { },
             RenderStage::NeedsRedraw => {
@@ -569,16 +584,24 @@ impl Renderer {
         let command_buffer = commands.build().unwrap();
 
         let af = self.acquire_future.take().unwrap();
-
-        let mut local_future: Option<Box<dyn GpuFuture>> = Some(Box::new(vulkano::sync::now(self.device.clone())) as Box<dyn GpuFuture>);
+        let command_future = af.then_execute(self.queue.clone(), command_buffer).unwrap()
+            .then_signal_fence_and_flush().unwrap();
         
-        mem::swap(&mut local_future, previous_frame_end);
+        let after_future = gui.draw_on_image(command_future, self.final_images.get(self.img_index).unwrap().clone()).then_signal_fence_and_flush().unwrap();
 
-        let future = local_future.take().unwrap().join(af)
-            .then_execute(self.queue.clone(), command_buffer).unwrap()
+        match after_future.wait(None) {
+            Ok(x) => x,
+            Err(e) => APP_LOGGER.log_error(&format!("{:?}", e), MessageEmitter::Renderer)
+        }
+
+        // let mut local_future: Option<Box<dyn GpuFuture>> = Some(Box::new(vulkano::sync::now(self.device.clone())) as Box<dyn GpuFuture>);
+        
+        // mem::swap(&mut local_future, previous_frame_end);
+        
+        let future = previous_frame_end.take().unwrap().join(after_future)
             .then_swapchain_present(self.queue.clone(), self.swapchain.clone(), self.img_index)
             .then_signal_fence_and_flush();
-
+        
         match future {
             Ok(future) => {
                 *previous_frame_end = Some(Box::new(future) as Box<_>);
@@ -592,6 +615,7 @@ impl Renderer {
                 *previous_frame_end = Some(Box::new(vulkano::sync::now(self.device.clone())) as Box<_>);
             }
         }
+
 
         self.commands = None;
         self.render_stage = RenderStage::Stopped;
@@ -646,14 +670,14 @@ impl Renderer {
     
         let viewport = Viewport {
             origin: [0.0, 0.0],
-            dimensions: [dimensions[0] as f32, dimensions[1] as f32],
+            dimensions: [dimensions.width() as f32, dimensions.height() as f32],
             depth_range: 0.0..1.0,
         };
         dynamic_state.viewports = Some(vec![viewport]);
 
-        let color_buffer = AttachmentImage::transient_input_attachment(device.clone(), dimensions, Format::A2B10G10R10UnormPack32).unwrap();
-        let normal_buffer = AttachmentImage::transient_input_attachment(device.clone(), dimensions, Format::R16G16B16A16Sfloat).unwrap();
-        let depth_buffer = AttachmentImage::transient_input_attachment(device.clone(), dimensions, Format::D16Unorm).unwrap();
+        let color_buffer = AttachmentImage::transient_input_attachment(device.clone(), dimensions.width_height(), Format::A2B10G10R10UnormPack32).unwrap();
+        let normal_buffer = AttachmentImage::transient_input_attachment(device.clone(), dimensions.width_height(), Format::R16G16B16A16Sfloat).unwrap();
+        let depth_buffer = AttachmentImage::transient_input_attachment(device.clone(), dimensions.width_height(), Format::D16Unorm).unwrap();
 
         (images.iter().map(|image| {
             Arc::new(

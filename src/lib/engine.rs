@@ -1,6 +1,7 @@
 use std::time::Instant;
 use winit::event_loop::{ ControlFlow, EventLoop };
 use winit::event::{ Event, WindowEvent };
+use egui_winit_vulkano::Gui;
 
 use crate::{
     world::*,
@@ -47,10 +48,14 @@ impl Engine {
     }
 
     pub fn start(mut self) {
+        let mut gui = Gui::new(self.renderer.surface.clone(), self.renderer.queue.clone(), true);
+
         let mut previous_frame_end: Option<Box<dyn vulkano::sync::GpuFuture>> = Some(Box::new(vulkano::sync::now(self.renderer.device.clone())));
         let event_loop = EventLoop::new();
 
         event_loop.run(move |event, _, control_flow| {
+            gui.update(&event);
+
             match event {
                 Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => {
                     *control_flow = ControlFlow::Exit;
@@ -59,6 +64,22 @@ impl Engine {
                     self.renderer.recreate_swapchain();
                 },
                 Event::MainEventsCleared => {
+                    gui.immediate_ui(|gui| {
+                        let ctx = gui.context();
+
+                        egui::TopBottomPanel::top("top_panel").show(&ctx, |ui| {
+                            ui.add(egui::Label::new("What is going on"));
+                            ui.label("Huh");
+                            if ui.button("Button?").clicked(){
+                                APP_LOGGER.log_info("Button clicked", MessageEmitter::Engine);
+                            }
+                        });
+
+                        egui::Window::new("Window").show(&ctx, |ui| {
+                            ui.label("Something?")
+                        });
+                    });
+
                     previous_frame_end.as_mut().take().unwrap().cleanup_finished();
 
                     self.renderer.start(self.world.void_color);
@@ -80,7 +101,8 @@ impl Engine {
                         self.renderer.directional(&self.world.lights[i]);
                     }
 
-                    self.renderer.finish(&mut previous_frame_end);
+                    self.renderer.finish(&mut previous_frame_end, &mut gui);
+
 
                     self.delta_time = (Instant::now() - self.start_of_last_frame).as_secs_f32();
 
