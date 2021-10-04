@@ -9,7 +9,7 @@ use crate::{
     material::{ Diffuse, Material },
     world::World,
     engine::EngineTime,
-    logger::{ APP_LOGGER, Logger, MessageEmitter }
+    logger::{ self, MessageEmitter }
 };
 
 pub trait Viewable: ViewableClone {
@@ -126,14 +126,14 @@ impl Object {
             let input = BufReader::new(file);
             
             if let Some(obj) = load_obj(input).ok() {
-                APP_LOGGER.log_debug(&format!("Loaded OBJ data from '{}'", model_path), MessageEmitter::Object("Object Initializer".into()));
+                logger::log_debug(&format!("Loaded OBJ data from '{}'", model_path), MessageEmitter::Object("Object Initializer".into()));
                 Some(obj)
             } else {
-                APP_LOGGER.log_error(&format!("Failed to load OBJ data from '{}'", model_path), MessageEmitter::Object("Object Initializer".into()));
+                logger::log_error(&format!("Failed to load OBJ data from '{}'", model_path), MessageEmitter::Object("Object Initializer".into()));
                 None
             }
         } else {
-            APP_LOGGER.log_error(&format!("Cannot open file '{}'", model_path), MessageEmitter::Object("Object Initializer".into()));
+            logger::log_error(&format!("Cannot open file '{}'", model_path), MessageEmitter::Object("Object Initializer".into()));
             None
         }
     }

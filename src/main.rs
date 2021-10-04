@@ -1,14 +1,14 @@
-use cgmath::Deg;
 use winit::event_loop::EventLoop;
+use cgmath::Deg;
 
 use hephaestus_lib::{
     engine::{ Engine, EngineTime },
     world::World,
-    primitives::{ Plane, Cube, Sphere },
+    primitives::Cube,
     object::*,
     camera::Camera,
     light::DirectionalLight,
-    logger::*
+    // logger::{ self, MessageEmitter }
 };
 
 fn main() {
@@ -20,11 +20,11 @@ fn main() {
     monkey_1.add_update(Box::new(|m: &mut Object, _: &World, time: &EngineTime| {
         m.transform.rotate([Deg(0.0), Deg(0.0), Deg(1.0)]);
 
-        let r = time.total_time.sin().abs();
-        let g = (time.total_time + 2.09).sin().abs();
-        let b = (time.total_time + 4.18).sin().abs();
+        let r = time.total_time_s.sin().abs();
+        let g = (time.total_time_s + 2.09).sin().abs();
+        let b = (time.total_time_s + 4.18).sin().abs();
         let new_color = [r, g, b];
-        
+
         m.material.set_color(new_color);
         m.transform.scale = [r; 3].into();
     }));
@@ -47,9 +47,9 @@ fn main() {
 fn extern_update(object: &mut Cube, _: &World, time: &EngineTime) {
     object.transform.rotate([Deg(0.0), Deg(0.0), Deg(1.0)]);
 
-    let r = time.total_time.sin().abs();
-    let g = (time.total_time + 2.09).sin().abs();
-    let b = (time.total_time + 4.18).sin().abs();
+    let r = time.total_time_s.sin().abs();
+    let g = (time.total_time_s + 2.09).sin().abs();
+    let b = (time.total_time_s + 4.18).sin().abs();
     let new_color = [r, g, b];
     object.material.set_color(new_color);
     object.transform.scale = [r; 3].into();

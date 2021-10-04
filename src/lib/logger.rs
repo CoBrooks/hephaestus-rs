@@ -2,9 +2,10 @@ use std::collections::HashMap;
 use std::cell::RefCell;
 use std::time::SystemTime;
 use chrono::{ DateTime, Local };
-use colored::*;
+use egui::Color32;
+use colored::Colorize;
 
-#[derive(PartialEq, Eq, Clone)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub enum LogLevel {
     Debug,
     Info,
@@ -12,7 +13,26 @@ pub enum LogLevel {
     Error,
 }
 
-#[derive(Clone)]
+impl LogLevel {
+    pub fn color(&self) -> Color32 {
+        match self {
+            LogLevel::Debug => {
+                Color32::from_gray(128)
+            },
+            LogLevel::Info => {
+                Color32::from_gray(255)
+            },
+            LogLevel::Warning => {
+                Color32::from_rgb(255, 200, 64)
+            },
+            LogLevel::Error => {
+                Color32::from_rgb(255, 64, 64)
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub enum MessageEmitter {
     Object(String),
     Engine,
@@ -20,7 +40,7 @@ pub enum MessageEmitter {
     World
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Message {
     pub content: String,
     pub time: SystemTime,
@@ -39,6 +59,23 @@ impl Message {
     }
 
     pub fn print(&self) {
+        match self.level {
+            LogLevel::Debug => { 
+                println!("{}", self.formatted().dimmed())
+            },
+            LogLevel::Info => { 
+                println!("{}", self.formatted().normal())
+            },
+            LogLevel::Warning => { 
+                println!("{}", self.formatted().yellow())
+            },
+            LogLevel::Error => { 
+                println!("{}", self.formatted().red())
+            },
+        }
+    }
+
+    pub fn formatted(&self) -> String {
         let emitter = match &self.emitter {
             MessageEmitter::Object(e) => e,
             MessageEmitter::Engine => "Engine",
@@ -51,20 +88,16 @@ impl Message {
 
         match self.level {
             LogLevel::Debug => { 
-                let msg = format!("DEBUG [{} | {}]: {}", emitter, time_str, self.content).dimmed();
-                println!("{}", msg);
+                format!("DEBUG [{} | {}]: {}", emitter, time_str, self.content)
             },
             LogLevel::Info => { 
-                let msg = format!("INFO [{} | {}]: {}", emitter, time_str, self.content);
-                println!("{}", msg);
+                format!("INFO  [{} | {}]: {}", emitter, time_str, self.content)
             },
             LogLevel::Warning => { 
-                let msg = format!("WARNING [{} | {}]: {}", emitter, time_str, self.content).yellow();
-                println!("{}", msg);
+                format!("WARN  [{} | {}]: {}", emitter, time_str, self.content)
             },
             LogLevel::Error => { 
-                let msg = format!("ERROR [{} | {}]: {}", emitter, time_str, self.content).red();
-                println!("{}", msg);
+                format!("ERROR [{} | {}]: {}", emitter, time_str, self.content)
             },
         }
     }
@@ -74,7 +107,7 @@ pub struct Log {
     messages: Option<HashMap<SystemTime, Message>>,
 }
 
-pub trait Logger {
+trait Logger {
     fn log_debug(&self, content: &str, emitter: MessageEmitter);
     fn log_info(&self, content: &str, emitter: MessageEmitter);
     fn log_warning(&self, content: &str, emitter: MessageEmitter);
@@ -82,6 +115,7 @@ pub trait Logger {
     fn log(&self, message: Message);
     fn get_level(&self, level: LogLevel) -> Option<Vec<Message>>;
     fn filter_messages(&self, filter: &dyn Fn(&&Message) -> bool) -> Option<Vec<Message>>;
+    fn get_all_messages(&self) -> Option<Vec<Message>>;
 }
 
 impl Logger for RefCell<Log> {
@@ -143,10 +177,43 @@ impl Logger for RefCell<Log> {
         } else {
             let mut messages = HashMap::new();
             messages.insert(time, message);
+            
             self.borrow_mut().messages = Some(messages);
+        }
+    }
+
+    fn get_all_messages(&self) -> Option<Vec<Message>> {
+        if self.borrow().messages.is_some() {
+            let mut messages: Vec<_> = self.borrow().messages.as_ref().unwrap().clone().into_iter().collect();
+            messages.sort_by(|x, y| x.0.cmp(&y.0));
+            
+            Some(messages.into_iter().map(|(_, v)| v).collect())
+        } else {
+            None
         }
     }
 }
 
-pub const APP_LOGGER: RefCell<Log> = RefCell::new(Log { messages: None });
+thread_local! {
+    pub static APP_LOGGER: RefCell<Log> = RefCell::new(Log { messages: None });
+}
 
+pub fn log_debug(content: &str, emitter: MessageEmitter) {
+    APP_LOGGER.with(|logger| logger.log_debug(content, emitter));
+}
+
+pub fn log_info(content: &str, emitter: MessageEmitter) {
+    APP_LOGGER.with(|logger| logger.log_info(content, emitter));
+}
+
+pub fn log_warning(content: &str, emitter: MessageEmitter) {
+    APP_LOGGER.with(|logger| logger.log_warning(content, emitter));
+}
+
+pub fn log_error(content: &str, emitter: MessageEmitter) {
+    APP_LOGGER.with(|logger| logger.log_error(content, emitter));
+}
+
+pub fn get_messages() -> Vec<Message> {
+    APP_LOGGER.with(|logger| logger.get_all_messages().unwrap_or(Vec::new()))
+}

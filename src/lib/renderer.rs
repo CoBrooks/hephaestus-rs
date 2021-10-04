@@ -31,7 +31,7 @@ use crate::{
     shaders::{ deferred, directional, ambient },
     object::Viewable,
     light::DirectionalLight,
-    logger::*
+    logger::{ self, MessageEmitter }
 };
 
 enum RenderStage {
@@ -102,7 +102,7 @@ impl Renderer {
                 }
             }).unwrap();
 
-        APP_LOGGER.log_debug(&format!("Using device: {} (type: {:?})", physical.properties().device_name, physical.properties().device_type), MessageEmitter::Renderer);
+        logger::log_debug(&format!("Using device: {} (type: {:?})", physical.properties().device_name, physical.properties().device_type), MessageEmitter::Renderer);
 
         let queue_family = physical.queue_families().find(|&q| {
             q.supports_graphics() && surface.is_supported(q).unwrap_or(false)
@@ -590,7 +590,7 @@ impl Renderer {
 
         match after_future.wait(None) {
             Ok(x) => x,
-            Err(e) => APP_LOGGER.log_error(&format!("{:?}", e), MessageEmitter::Renderer)
+            Err(e) => logger::log_error(&format!("{:?}", e), MessageEmitter::Renderer)
         }
 
         let future = previous_frame_end.take().unwrap().join(after_future)

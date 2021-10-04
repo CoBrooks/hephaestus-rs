@@ -6,7 +6,7 @@ use crate::{
     material::{ Diffuse, Material },
     world::World,
     engine::EngineTime,
-    logger::*
+    logger::{ self, MessageEmitter }
 };
 
 pub trait Primitive: Viewable { }
@@ -25,7 +25,7 @@ pub struct Plane {
 #[allow(dead_code)]
 impl Plane {
     pub fn new(origin: [f32; 3], scale: [f32; 3], color: [f32; 3]) -> Self {
-        APP_LOGGER.log_debug("Creating plane.", MessageEmitter::Object("Object Initializer".into()));
+        logger::log_debug("Creating plane.", MessageEmitter::Object("Object Initializer".into()));
 
         let mut p = Plane {
             transform: Transform::new(
@@ -145,7 +145,7 @@ pub struct Cube {
 
 impl Cube {
     pub fn new(origin: [f32; 3], scale: [f32; 3], color: [f32; 3]) -> Self{
-        APP_LOGGER.log_debug("Creating cube.", MessageEmitter::Object("Object Initializer".into()));
+        logger::log_debug("Creating cube.", MessageEmitter::Object("Object Initializer".into()));
 
         let mut c = Cube {
             transform: Transform::new(
@@ -275,7 +275,7 @@ pub struct Sphere {
 
 impl Sphere {
     pub fn new(origin: [f32; 3], scale: [f32; 3], color: [f32; 3], resolution: u8) -> Self{
-        APP_LOGGER.log_debug("Creating sphere", MessageEmitter::Object("Object Initilizer".into()));
+        logger::log_debug("Creating sphere", MessageEmitter::Object("Object Initilizer".into()));
 
         let mut s = Sphere {
             transform: Transform::new(
