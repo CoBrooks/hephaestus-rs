@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 use std::sync::Arc;
 use vulkano::buffer::{ BufferUsage, CpuAccessibleBuffer, CpuBufferPool, cpu_pool::CpuBufferPoolSubbuffer };
 use vulkano::command_buffer::{ AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, PrimaryAutoCommandBuffer, SubpassContents };
@@ -42,6 +41,7 @@ enum RenderStage {
     NeedsRedraw
 }
 
+#[allow(dead_code)]
 pub struct Renderer {
     instance: Arc<Instance>,
     pub surface: Arc<Surface<Window>>,

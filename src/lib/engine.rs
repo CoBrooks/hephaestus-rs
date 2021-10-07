@@ -1,14 +1,12 @@
-use std::time::Instant;
-use std::borrow::Cow;
+use std::time::{ Duration, Instant };
 use winit::event_loop::{ ControlFlow, EventLoop };
 use winit::event::{ Event, WindowEvent };
 use egui_winit_vulkano::Gui;
-use egui::{ FontDefinitions, FontFamily };
 
 use crate::{
     world::*,
     renderer::Renderer,
-    logger
+    gui::DebugGui
 };
 
 pub struct EngineTime {
@@ -16,10 +14,10 @@ pub struct EngineTime {
     pub fps: f32,
     pub total_time_ms: f32,
     pub total_time_s: f32,
+    pub last_60_frame_durations: Vec<f32>,
     start_time: Instant,
     start_of_last_frame: Instant,
     total_frames: u128,
-    last_60_frame_durations: Vec<f32>
 }
 
 impl EngineTime {
@@ -63,9 +61,68 @@ impl EngineTime {
     }
 }
 
+pub struct FrameTimeBreakdown {
+    pub start: Instant,
+    pub setup: Duration,
+    pub object_loop: Duration,
+    pub ambient: Duration,
+    pub directional: Duration,
+    pub draw_call: Duration,
+    temp_time: Instant
+}
+
+impl FrameTimeBreakdown {
+    pub fn new() -> Self {
+        Self {
+            start: Instant::now(),
+            setup: Duration::default(),
+            object_loop: Duration::default(),
+            ambient: Duration::default(),
+            directional: Duration::default(),
+            draw_call: Duration::default(),
+            temp_time: Instant::now(),
+        }
+    }
+
+    pub fn restart(&mut self) {
+        *self = Self::new();
+    }
+
+    pub fn update_setup(&mut self) {
+        let now = Instant::now();
+        self.setup = now - self.start;
+        self.temp_time = now;
+    }
+
+    pub fn update_object_loop(&mut self) {
+        let now = Instant::now();
+        self.object_loop = now - self.temp_time;
+        self.temp_time = now;
+    }
+
+    pub fn update_ambient(&mut self) {
+        let now = Instant::now();
+        self.ambient = now - self.temp_time;
+        self.temp_time = now;
+    }
+    
+    pub fn update_directional(&mut self) {
+        let now = Instant::now();
+        self.directional = now - self.temp_time;
+        self.temp_time = now;
+    }
+    
+    pub fn update_draw_call(&mut self) {
+        let now = Instant::now();
+        self.draw_call = now - self.temp_time;
+        self.temp_time = now;
+    }
+}
+
 pub struct Engine {
     pub world: World,
     pub renderer: Renderer,
+    pub debug_gui: DebugGui,
     time: EngineTime,
 }
 
@@ -74,11 +131,13 @@ impl Engine {
         let renderer = Renderer::new(event_loop, world.camera);
 
         let time = EngineTime::new();
+        let debug_gui = DebugGui::new();
 
         Self {
             world,
             renderer,
-            time
+            time,
+            debug_gui
         }
     }
 
@@ -87,9 +146,8 @@ impl Engine {
 
         let mut previous_frame_end: Option<Box<dyn vulkano::sync::GpuFuture>> = Some(Box::new(vulkano::sync::now(self.renderer.device.clone())));
 
-        let mut show_debug_log = true;
-        let mut prev_height = 350.0;
-
+        let mut frame_breakdown = FrameTimeBreakdown::new();
+        
         event_loop.run(move |event, _, control_flow| {
             gui.update(&event);
 
@@ -101,60 +159,31 @@ impl Engine {
                     self.renderer.recreate_swapchain();
                 },
                 Event::MainEventsCleared => {
-                    gui.immediate_ui(|gui| {
-                        let ctx = gui.context();
-                        
-                        let mut font_style = FontDefinitions::default();
-                        font_style.font_data.insert("JetBrains Mono".into(), Cow::Borrowed(include_bytes!("../../fonts/JetBrainsMono-Regular.ttf")));
-                        font_style.fonts_for_family.insert(FontFamily::Monospace, vec!["JetBrains Mono".into(), ]);
-                        font_style.family_and_size.insert(egui::TextStyle::Body, (FontFamily::Monospace, 20.0));
-                        font_style.family_and_size.insert(egui::TextStyle::Button, (FontFamily::Proportional, 16.0));
-                        ctx.set_fonts(font_style);
-
-                        egui::TopBottomPanel::bottom("Debug")
-                            .default_height(350.0)
-                            .resizable(true)
-                            .max_height(500.0)
-                            .show(&ctx, |ui| {
-                                ui.label(format!("{} FPS", self.time.fps.round()));
-                                if ui.button(if show_debug_log { "Hide Debug Log" } else { "Show Debug Log" }).clicked() {
-                                    if !show_debug_log { ui.set_height(prev_height); }
-                                    else { prev_height = ui.available_height() }
-
-                                    show_debug_log = !show_debug_log;
-                                }
-                                
-                                if show_debug_log { 
-                                    // Snap to bottom once https://github.com/emilk/egui/pull/765 is approved
-                                    egui::ScrollArea::auto_sized()
-                                        .show(ui, |ui| {
-                                            let messages = logger::get_messages();
-                                            for message in messages {
-                                                ui.colored_label(message.level.color(), message.formatted());
-                                            }
-                                    });
-                                }
-                        });
-                    });
+                    self.debug_gui.show(&mut gui, &self.time, &frame_breakdown);
+                    frame_breakdown.restart();
 
                     previous_frame_end.as_mut().take().unwrap().cleanup_finished();
 
                     self.renderer.start(self.world.void_color);
+                    frame_breakdown.update_setup();
                     
                     let world_clone = self.world.clone();
-                    
                     for i in 0..self.world.objects.len() {
                         self.world.objects[i].update(&world_clone, &self.time);
                         self.renderer.geometry(self.world.objects[i].as_ref());
                     }
+                    frame_breakdown.update_object_loop();
 
                     self.renderer.ambient();
+                    frame_breakdown.update_ambient();
 
                     for i in 0..self.world.lights.len() {
                         self.renderer.directional(&self.world.lights[i]);
                     }
+                    frame_breakdown.update_directional();
 
                     self.renderer.finish(&mut previous_frame_end, &mut gui);
+                    frame_breakdown.update_draw_call();
                     
                     self.time.update();
                 },
