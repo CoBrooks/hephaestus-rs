@@ -10,3 +10,5 @@ pub mod light;
 pub mod renderer;
 pub mod logger;
 pub mod gui;
+pub mod entity;
+pub mod mesh_data;

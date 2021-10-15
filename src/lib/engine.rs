@@ -6,7 +6,8 @@ use egui_winit_vulkano::Gui;
 use crate::{
     world::*,
     renderer::Renderer,
-    gui::DebugGui
+    gui::DebugGui,
+    entity::*
 };
 
 pub struct EngineTime {
@@ -147,6 +148,15 @@ impl Engine {
         let mut previous_frame_end: Option<Box<dyn vulkano::sync::GpuFuture>> = Some(Box::new(vulkano::sync::now(self.renderer.device.clone())));
 
         let mut frame_breakdown = FrameTimeBreakdown::new();
+
+        // Initialize Entities
+        let initial_world = self.world.clone();
+        
+        if let Some(logics) = initial_world.get_components_of_type::<Logic>() {
+            for l in logics {
+                (l.init)(*l.get_id(), &mut self.world)
+            }
+        }
         
         event_loop.run(move |event, _, control_flow| {
             gui.update(&event);
@@ -168,9 +178,20 @@ impl Engine {
                     frame_breakdown.update_setup();
                     
                     let world_clone = self.world.clone();
-                    for i in 0..self.world.objects.len() {
-                        self.world.objects[i].update(&world_clone, &self.time);
-                        self.renderer.geometry(self.world.objects[i].as_ref());
+                    let ids = world_clone.get_all_ids().unwrap_or(vec![]);
+                    for id in ids {
+                        if self.world.get_component_by_id::<Mesh>(*id).is_none() || self.world.get_component_by_id::<Transform>(*id).is_none() { return; }
+
+                        self.renderer.geometry(
+                            self.world.get_component_by_id::<Mesh>(*id).unwrap(), 
+                            self.world.get_component_by_id::<Transform>(*id).unwrap(), 
+                            self.world.get_component_by_id::<Material>(*id),
+                            self.world.get_component_by_id::<Texture>(*id)
+                        );
+
+                        if let Some(logic) = world_clone.get_component_by_id::<Logic>(*id) {
+                            (logic.update)(*logic.get_id(), &mut self.world)
+                        }
                     }
                     frame_breakdown.update_object_loop();
 

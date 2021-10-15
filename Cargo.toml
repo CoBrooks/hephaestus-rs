@@ -24,4 +24,6 @@ png = "*"
 colored = "2.0.0"
 chrono = "0.4"
 egui = "0.14"
-egui_winit_vulkano = "*" # { path = "/home/cbrooks/tools/egui_winit_vulkano" }
+egui_winit_vulkano = "*"
+downcast-rs = "1.2"
+hephaestus-macros = { path = "./hephaestus-macros" }

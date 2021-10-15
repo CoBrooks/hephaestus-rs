@@ -649,14 +649,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "hephaestus-macros"
+version = "0.1.0"
+dependencies = [
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "hephaestus-rs"
 version = "0.1.0"
 dependencies = [
  "cgmath",
  "chrono",
  "colored",
+ "downcast-rs",
  "egui",
  "egui_winit_vulkano",
+ "hephaestus-macros",
  "obj-rs",
  "png 0.17.1",
  "vulkano",

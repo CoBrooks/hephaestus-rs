@@ -30,7 +30,8 @@ use crate::{
     shaders::{ deferred, directional, ambient },
     object::Viewable,
     light::DirectionalLight,
-    logger::{ self, MessageEmitter }
+    logger::{ self, MessageEmitter },
+    entity::*
 };
 
 enum RenderStage {
@@ -393,7 +394,7 @@ impl Renderer {
         self.acquire_future = Some(acquire_future);
     }
 
-    pub fn geometry(&mut self, model: &dyn Viewable) {
+    pub fn geometry(&mut self, mesh: &Mesh, transform: &Transform, material: Option<&Material>, texture: Option<&Texture>) {
         match self.render_stage {
             RenderStage::Deferred => { },
             RenderStage::NeedsRedraw => {
@@ -410,7 +411,7 @@ impl Renderer {
         }
 
         let model_buffer = {
-            let model_matrix = model.transform().model_matrix();
+            let model_matrix = transform.model_matrix();
 
             let uniform_data = ModelBufferObject {
                 model: model_matrix.clone(),
@@ -428,9 +429,13 @@ impl Renderer {
         );
         
         // Make sure vertex color is up-to-date (allows dynamically changing color in update loop)
-        let model_color = model.get_material().get_color();
-        let vertices: Vec<Vertex> = model.get_vertices()
-            .clone()
+        let model_color = if let Some(material) = material { 
+            material.color
+        } else {
+            [1.0; 3]
+        };
+
+        let vertices: Vec<Vertex> = mesh.data.vertices
             .iter()
             .map(|&v| Vertex { color: model_color, ..v })
             .collect();
@@ -446,19 +451,24 @@ impl Renderer {
             self.device.clone(),
             BufferUsage::index_buffer(),
             false,
-            model.get_indices().iter().cloned()
+            mesh.data.indices.iter().cloned()
         ).unwrap();
-
-        let (texture, mut texture_future) = model.get_material().get_texture_buffer(&self.queue);
-        let sampler = model.get_material().get_texture_sampler(&self.device);
+        
         let layout = self.deferred_pipeline.layout().descriptor_set_layouts().get(2).unwrap();
+        let (image, mut texture_future) = if let Some(texture) = texture {
+            texture.get_buffer(&self.queue)
+        } else {
+            Texture::get_null_buffer(&self.queue)
+        };
+        
         let tex_set = Arc::new(
             PersistentDescriptorSet::start(layout.clone())
-                .add_sampled_image(texture.clone(), sampler)
+                .add_sampled_image(image.clone(), Texture::get_sampler(&self.device.clone()))
                 .unwrap()
                 .build()
                 .unwrap()
-        );
+            );
+        
         texture_future.cleanup_finished();
 
         let mut commands = self.commands.take().unwrap();

@@ -72,7 +72,7 @@ impl DebugGui {
     }
 
     fn debug_log(&mut self, ui: &mut Ui) {
-        // Snap to bottom once https://github.com/emilk/egui/pull/765 is approved.
+        // Snap to bottom once egui 0.14.3 is released
         egui::ScrollArea::auto_sized()
             .show(ui, |ui| {
                 let messages = logger::get_messages();
@@ -120,8 +120,14 @@ impl DebugGui {
 
             ui.horizontal(|ui| {
                 ui.label("Total:");
-                ui.add_space(ui.available_size_before_wrap().x - ui.fonts().glyph_width(egui::TextStyle::Monospace, '0') * 10.0);
+                ui.add_space(ui.available_size_before_wrap().x - ui.fonts().glyph_width(egui::TextStyle::Monospace, '0') * 11.5);
                 ui.label(format!("{:.2}ms", time.last_60_frame_durations.last().unwrap_or(&0.0) * 1000.0));
+            });
+            
+            ui.horizontal(|ui| {
+                ui.label("Target:");
+                ui.add_space(ui.available_size_before_wrap().x - ui.fonts().glyph_width(egui::TextStyle::Monospace, '0') * 11.5);
+                ui.label(format!("{:.2}ms", 1000.0 / 60.0));
             });
         });
         

@@ -11,6 +11,13 @@ use crate::{
 
 pub trait Primitive: Viewable { }
 
+#[derive(Clone)]
+pub enum PrimitiveType {
+    Plane,
+    Cube,
+    Sphere(u8)
+}
+
 //{{{ Plane
 #[derive(Clone)]
 pub struct Plane {

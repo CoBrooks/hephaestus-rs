@@ -1,32 +1,16 @@
-use std::collections::HashMap;
-
 use crate::{
-    object::Viewable,
     camera::Camera,
     light::DirectionalLight,
-    logger::{ self, MessageEmitter }
+    logger::{ self, MessageEmitter },
+    entity::{ Component, EntityBuilder, Entity }
 };
 
+#[derive(Clone)]
 pub struct World {
-    pub objects: Vec<Box<dyn Viewable>>,
+    pub components: Vec<Box<dyn Component>>,
     pub lights: Vec<DirectionalLight>,
     pub camera: Camera,
     pub void_color: [f32; 4],
-    object_dict: HashMap<String, usize>,
-}
-
-impl Clone for World {
-    fn clone(&self) -> Self {
-        Self {
-            objects: self.objects.iter()
-                .map(|o| o.boxed_clone())
-                .collect(),
-            object_dict: self.object_dict.clone(),
-            lights: self.lights.clone(),
-            camera: self.camera.clone(),
-            void_color: self.void_color.clone()
-        }
-    }
 }
 
 impl World {
@@ -34,29 +18,96 @@ impl World {
         logger::log_debug("Instantiating world.", MessageEmitter::World);
         
         World {
-            objects: Vec::new(),
-            object_dict: HashMap::new(),
+            components: Vec::new(),
             lights: Vec::new(),
             camera,
             void_color: [0.01, 0.01, 0.01, 1.0]
         }
     }
 
-    pub fn add_object(&mut self, name: &str, mut object: Box<dyn Viewable>) {
-        object.set_name(name.into());
-
-        let msg = format!("Adding \"{}\" (from '{}') to world.", name, object.get_model_path());
-        logger::log_debug(&msg, MessageEmitter::World);
-        
-        self.objects.push(object);
-        self.object_dict.insert(name.into(), self.objects.len());
+    pub fn new_entity(&self) -> EntityBuilder {
+        let id = self.get_next_entity_id();
+        EntityBuilder::new(id)
     }
 
-    pub fn get_object(&self, name: &str) -> Option<&Box<dyn Viewable>> {
-        if let Some(&index) = self.object_dict.get(name) {
-            Some(&self.objects.get(index).unwrap())
-        } else {
+    pub fn add_entity(&mut self, mut entity: EntityBuilder) {
+        self.components.append(&mut entity.components);
+    }
+
+    pub fn get_next_entity_id(&self) -> usize {
+        self.get_components_of_type::<Entity>().unwrap_or(vec![]).len()
+    }
+
+    pub fn get_all_ids(&self) -> Option<Vec<&usize>> {
+        let ids: Vec<&usize> = self.get_components_of_type::<Entity>()?
+            .iter()
+            .map(|e| e.get_id())
+            .collect();
+
+        if ids.is_empty() {
             None
+        } else {
+            Some(ids)
+        }
+    }
+
+    pub fn get_components_by_id(&self, id: usize) -> Option<Vec<&Box<dyn Component>>> {
+        let e: Vec<&Box<dyn Component>> = self.components.iter()
+            .filter(|c| c.get_id() == &id)
+            .collect();
+
+        if e.is_empty() {
+            None
+        } else {
+            Some(e)
+        }
+    }
+
+    pub fn get_components_by_id_mut(&mut self, id: usize) -> Option<Vec<&mut Box<dyn Component>>> {
+        let e: Vec<&mut Box<dyn Component>> = self.components.iter_mut()
+            .filter(|c| c.get_id() == &id)
+            .collect();
+
+        if e.is_empty() {
+            None
+        } else {
+            Some(e)
+        }
+    }
+
+    pub fn get_component_by_id<T: Component>(&self, id: usize) -> Option<&T> {
+        self.components.iter()
+            .find(|c| c.get_id() == &id && c.downcast_ref::<T>().is_some())
+            .map(|c| c.downcast_ref::<T>().unwrap())
+    }
+    
+    pub fn get_component_by_id_mut<T: Component>(&mut self, id: usize) -> Option<&mut T> {
+        self.components.iter_mut()
+            .find(|c| c.get_id() == &id && c.downcast_ref::<T>().is_some())
+            .map(|c| c.downcast_mut::<T>().unwrap())
+    }
+
+    pub fn get_components_of_type<T: Component>(&self) -> Option<Vec<&T>> {
+        let c: Vec<&T> = self.components.iter()
+            .filter_map(|c| c.downcast_ref::<T>())
+            .collect();
+
+        if c.is_empty() {
+            None
+        } else {
+            Some(c)
+        }
+    }
+    
+    pub fn get_components_of_type_mut<T: Component>(&mut self) -> Option<Vec<&mut T>> {
+        let c: Vec<&mut T> = self.components.iter_mut()
+            .filter_map(|c| c.downcast_mut::<T>())
+            .collect();
+
+        if c.is_empty() {
+            None
+        } else {
+            Some(c)
         }
     }
 
