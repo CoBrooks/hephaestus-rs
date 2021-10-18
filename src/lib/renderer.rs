@@ -28,7 +28,6 @@ use crate::{
     buffer_objects::*,
     camera::Camera,
     shaders::{ deferred, directional, ambient },
-    object::Viewable,
     light::DirectionalLight,
     logger::{ self, MessageEmitter },
     entity::*
@@ -456,10 +455,12 @@ impl Renderer {
         
         let layout = self.deferred_pipeline.layout().descriptor_set_layouts().get(2).unwrap();
         let (image, mut texture_future) = if let Some(texture) = texture {
-            texture.get_buffer(&self.queue)
+            unsafe { texture.get_buffer(&self.queue) }
         } else {
             Texture::get_null_buffer(&self.queue)
         };
+        
+        texture_future.cleanup_finished();
         
         let tex_set = Arc::new(
             PersistentDescriptorSet::start(layout.clone())
@@ -468,8 +469,6 @@ impl Renderer {
                 .build()
                 .unwrap()
             );
-        
-        texture_future.cleanup_finished();
 
         let mut commands = self.commands.take().unwrap();
         commands

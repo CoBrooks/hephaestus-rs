@@ -6,18 +6,20 @@ use downcast_rs::{ Downcast, impl_downcast };
 use cgmath::{ Vector3, Matrix4, Quaternion, Euler, Deg };
 use vulkano::image::{ ImageDimensions, ImmutableImage, view::ImageView };
 use vulkano::sampler::Sampler;
-use vulkano::sync::NowFuture;
-use vulkano::command_buffer::{ CommandBufferExecFuture, PrimaryAutoCommandBuffer };
+use vulkano::sync::GpuFuture;
 use vulkano::device::{ Device, Queue };
 use vulkano::format::Format;
+use vulkano::buffer::{ BufferUsage, CpuAccessibleBuffer };
 
 use crate::{
     mesh_data::{ MeshData, MeshType },
-    world::World
+    world::World,
+    // logger::{ self, MessageEmitter }
 };
 
 pub trait Component: Downcast + ComponentClone { 
     fn get_id(&self) -> &usize;
+    fn set_id(&mut self, id: usize);
 }
 impl_downcast!(Component);
 
@@ -144,7 +146,8 @@ pub struct Material {
 pub struct Texture {
     id: usize,
     pub path: String,
-    data: Option<(Vec<u8>, ImageDimensions)>, 
+    bytes: Vec<u8>,
+    dimensions: ImageDimensions
 }
 
 impl Texture {
@@ -154,16 +157,15 @@ impl Texture {
         let decoder = png::Decoder::new(cursor);
         let mut reader = decoder.read_info().unwrap();
         let info = reader.info();
-        let dimensions = ImageDimensions::Dim2d {
+
+        self.dimensions = ImageDimensions::Dim2d {
             width: info.width,
             height: info.height,
             array_layers: 1
         };
-        let mut image_data = Vec::new();
-        image_data.resize((info.width * info.height * 4) as usize, 0);
-        reader.next_frame(&mut image_data).unwrap();
 
-        self.data = Some((image_data, dimensions));
+        self.bytes.resize((info.width * info.height * 4) as usize, 0);
+        reader.next_frame(&mut self.bytes).unwrap();
     }
 
     pub fn get_sampler(device: &Arc<Device>) -> Arc<Sampler> {
@@ -179,21 +181,31 @@ impl Texture {
         ).unwrap()
     }
 
-    pub fn get_buffer(&self, queue: &Arc<Queue>) -> (Arc<ImageView<Arc<ImmutableImage>>>, CommandBufferExecFuture<NowFuture, PrimaryAutoCommandBuffer>) {
-        let (tex_bytes, dimensions) = self.data.as_ref().unwrap();
-        
-        let (image, future) = ImmutableImage::from_iter(
-            tex_bytes.iter().cloned(),
-            *dimensions,
+    pub unsafe fn get_buffer(&self, queue: &Arc<Queue>) -> (Arc<ImageView<Arc<ImmutableImage>>>, Box<dyn GpuFuture>) {
+        let buffer: Arc<CpuAccessibleBuffer<[u8]>> = CpuAccessibleBuffer::uninitialized_array(
+            queue.device().clone(),
+            (self.dimensions.width() * self.dimensions.height() * 4) as u64,
+            BufferUsage::transfer_source(),
+            true
+        ).unwrap();
+
+        { // New scope to "fool" the borrow-checker (can't borrow `buffer` as mutable and immutable in the same scope)
+            let mut mapping = buffer.write().unwrap();
+            mapping.copy_from_slice(self.bytes.as_slice());
+        }
+
+        let (image, future) = ImmutableImage::from_buffer(
+            buffer,
+            self.dimensions,
             vulkano::image::MipmapsCount::One,
             Format::R8G8B8A8Srgb,
             queue.clone()
         ).unwrap();
-        
-        (ImageView::new(image).unwrap(), future)
+
+        (ImageView::new(image).unwrap(), future.boxed())
     }
 
-    pub fn get_null_buffer(queue: &Arc<Queue>) -> (Arc<ImageView<Arc<ImmutableImage>>>, CommandBufferExecFuture<NowFuture, PrimaryAutoCommandBuffer>) {
+    pub fn get_null_buffer(queue: &Arc<Queue>) -> (Arc<ImageView<Arc<ImmutableImage>>>, Box<dyn GpuFuture>) {
         let png_bytes = fs::read("models/textures/null_texture.png").unwrap(); 
         let cursor = Cursor::new(png_bytes);
         let decoder = png::Decoder::new(cursor);
@@ -216,27 +228,30 @@ impl Texture {
             queue.clone()
         ).unwrap();
         
-        (ImageView::new(image).unwrap(), future)
+        (ImageView::new(image).unwrap(), future.boxed())
     }
 }
 
 #[derive(Clone)]
 pub struct EntityBuilder {
-    id: usize,
     pub components: Vec<Box<dyn Component>>
 }
 
 impl EntityBuilder {
-    pub fn new(id: usize) -> Self {
+    pub fn new() -> Self {
         Self {
-            id,
-            components: vec![Box::new(Entity { id })]
+            components: vec![Box::new(Entity { id: 0 })]
         }
+    }
+
+    pub fn set_id(&mut self, id: usize) {
+        self.components.iter_mut()
+            .for_each(|c| c.set_id(id));
     }
 
     pub fn transform(mut self, translation: [f32; 3], scale: [f32; 3], rotation: [Deg<f32>; 3]) -> Self {
         let t = Transform {
-            id: self.id,
+            id: 0,
             translation: translation.into(),
             scale: scale.into(),
             rotation: Quaternion::from(Euler::new(rotation[0], rotation[1], rotation[2]))
@@ -248,7 +263,7 @@ impl EntityBuilder {
 
     pub fn logic(mut self, init: Box<fn(usize, &mut World)>, update: Box<fn(usize, &mut World)>) -> Self {
         let l = Logic {
-            id: self.id,
+            id: 0,
             init,
             update
         };
@@ -259,7 +274,7 @@ impl EntityBuilder {
 
     pub fn mesh(mut self, mesh: MeshType) -> Self {
         let mut m = Mesh {
-            id: self.id,
+            id: 0,
             data: MeshData::empty(),
             mesh_type: mesh
         };
@@ -270,11 +285,23 @@ impl EntityBuilder {
         self
     }
 
+    pub fn material(mut self, color: [f32; 3]) -> Self {
+        let m = Material {
+            id: 0,
+            color
+        };
+
+        self.components.push(Box::new(m));
+
+        self
+    }
+
     pub fn texture(mut self, path: &str) -> Self {
         let mut t = Texture {
-            id: self.id,
+            id: 0,
             path: path.into(),
-            data: None
+            bytes: Vec::new(),
+            dimensions: ImageDimensions::Dim2d { width: 0, height: 0, array_layers: 0 }
         };
         t.init();
 

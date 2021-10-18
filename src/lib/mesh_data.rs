@@ -5,9 +5,15 @@ use obj::{ Obj, TexturedVertex, load_obj };
 
 use crate::{ 
     buffer_objects::Vertex,
-    primitives::PrimitiveType,
     logger::{ self, MessageEmitter }
 };
+
+#[derive(Clone)]
+pub enum PrimitiveType {
+    Plane,
+    Cube,
+    Sphere(u8)
+}
 
 #[derive(Clone)]
 pub enum MeshType {

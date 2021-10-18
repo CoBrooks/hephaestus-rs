@@ -1,2 +1,4 @@
 /target
 /hephaestus-macros/target
+*.svg
+perf.*

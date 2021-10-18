@@ -7,7 +7,8 @@ use crate::{
     world::*,
     renderer::Renderer,
     gui::DebugGui,
-    entity::*
+    entity::*,
+    // logger::{ self, MessageEmitter }
 };
 
 pub struct EngineTime {
@@ -18,7 +19,6 @@ pub struct EngineTime {
     pub last_60_frame_durations: Vec<f32>,
     start_time: Instant,
     start_of_last_frame: Instant,
-    total_frames: u128,
 }
 
 impl EngineTime {
@@ -32,19 +32,15 @@ impl EngineTime {
             total_time_s: 0.0,
             start_time: now,
             start_of_last_frame: now,
-            total_frames: 0,
             last_60_frame_durations: Vec::new()
         }
     }
 
     pub fn update(&mut self) {
-        self.total_frames += 1;
-
         self.total_time_ms = self.start_time.elapsed().as_millis() as f32;
         self.total_time_s = self.total_time_ms / 1000.0;
 
-        let delta_time = (Instant::now() - self.start_of_last_frame).as_secs_f32();
-        self.delta_time = delta_time as f32;
+        self.delta_time = self.start_of_last_frame.elapsed().as_secs_f32();
 
         if self.last_60_frame_durations.len() < 100 {
             self.last_60_frame_durations.push(self.delta_time);
@@ -124,6 +120,7 @@ pub struct Engine {
     pub world: World,
     pub renderer: Renderer,
     pub debug_gui: DebugGui,
+    initial_world: World,
     time: EngineTime,
 }
 
@@ -135,6 +132,7 @@ impl Engine {
         let debug_gui = DebugGui::new();
 
         Self {
+            initial_world: world.clone(),
             world,
             renderer,
             time,
@@ -150,14 +148,12 @@ impl Engine {
         let mut frame_breakdown = FrameTimeBreakdown::new();
 
         // Initialize Entities
-        let initial_world = self.world.clone();
+        let logics = self.initial_world.get_components_of_type::<Logic>().unwrap_or_default();
         
-        if let Some(logics) = initial_world.get_components_of_type::<Logic>() {
-            for l in logics {
-                (l.init)(*l.get_id(), &mut self.world)
-            }
+        for l in &logics {
+            (l.init)(*l.get_id(), &mut self.world)
         }
-        
+
         event_loop.run(move |event, _, control_flow| {
             gui.update(&event);
 
@@ -177,21 +173,23 @@ impl Engine {
                     self.renderer.start(self.world.void_color);
                     frame_breakdown.update_setup();
                     
-                    let world_clone = self.world.clone();
-                    let ids = world_clone.get_all_ids().unwrap_or(vec![]);
+                    let ids = self.world.get_all_ids().unwrap_or_default();
                     for id in ids {
-                        if self.world.get_component_by_id::<Mesh>(*id).is_none() || self.world.get_component_by_id::<Transform>(*id).is_none() { return; }
-
-                        self.renderer.geometry(
-                            self.world.get_component_by_id::<Mesh>(*id).unwrap(), 
-                            self.world.get_component_by_id::<Transform>(*id).unwrap(), 
-                            self.world.get_component_by_id::<Material>(*id),
-                            self.world.get_component_by_id::<Texture>(*id)
-                        );
-
-                        if let Some(logic) = world_clone.get_component_by_id::<Logic>(*id) {
-                            (logic.update)(*logic.get_id(), &mut self.world)
+                        if let Some(mesh) = self.world.get_component_by_id::<Mesh>(id) {
+                            if let Some(transform) = self.world.get_component_by_id::<Transform>(id) {
+                                self.renderer.geometry(
+                                    mesh, 
+                                    transform, 
+                                    self.world.get_component_by_id::<Material>(id),
+                                    self.world.get_component_by_id::<Texture>(id)
+                                );
+                            }
                         }
+                    }
+
+                    let logics = self.initial_world.get_components_of_type::<Logic>().unwrap_or_default();
+                    for logic in &logics {
+                        (logic.update)(*logic.get_id(), &mut self.world)
                     }
                     frame_breakdown.update_object_loop();
 

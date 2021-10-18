@@ -7,8 +7,8 @@ use hephaestus_lib::{
     camera::Camera,
     light::DirectionalLight,
     logger::{ self, MessageEmitter },
-    mesh_data::MeshType,
-    entity::Transform
+    mesh_data::{ MeshType, PrimitiveType },
+    entity::Transform,
 };
 
 fn main() {
@@ -17,12 +17,22 @@ fn main() {
     
     let white_light = DirectionalLight::new([1.0, 2.0, 1.0, 1.0], [0.5, 0.5, 0.5]);
 
-    let blank = world.new_entity();
-
     let monkey = world.new_entity()
         .transform([0.0; 3], [0.2; 3], [Deg(0.0); 3])
         .mesh(MeshType::Model("models/suzanne.obj".into()))
-        // .texture("models/textures/monkey_texture.png")
+        .texture("models/textures/monkey_texture.png")
+        .logic(Box::new(init), Box::new(update));
+
+    let cube = world.new_entity()
+        .transform([0.0, 0.0, 1.0], [0.2; 3], [Deg(0.0); 3])
+        .mesh(MeshType::Primitive(PrimitiveType::Cube))
+        .texture("models/textures/color.png")
+        .logic(Box::new(init), Box::new(update));
+
+    let sphere = world.new_entity()
+        .transform([0.0, 1.0, 0.0], [0.4; 3], [Deg(0.0); 3])
+        .mesh(MeshType::Primitive(PrimitiveType::Sphere(3)))
+        .material([1.0, 0.5, 0.2])
         .logic(Box::new(init), Box::new(update));
 
     logger::log_debug("debug debug debug", MessageEmitter::Engine);
@@ -30,10 +40,10 @@ fn main() {
     logger::log_warning("warning warning warning", MessageEmitter::Engine);
     logger::log_error("error error error", MessageEmitter::Engine);
 
-    world.add_entity(blank.clone());
-    world.add_entity(blank.clone());
-    world.add_entity(blank.clone());
+    world.add_entity(cube);
+    world.add_entity(sphere);
     world.add_entity(monkey);
+
     world.add_light(white_light);
 
     let event_loop = EventLoop::with_user_event();

@@ -11,6 +11,9 @@ path = "src/lib/lib.rs"
 name = "hephaestus_bin"
 path = "src/main.rs"
 
+[profile.release]
+debug = true
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]

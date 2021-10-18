@@ -14,6 +14,10 @@ pub fn component_derive(input: TokenStream) -> TokenStream {
             fn get_id(&self) -> &usize {
                 &self.id
             }
+
+            fn set_id(&mut self, id: usize) {
+                self.id = id;
+            }
         }
     };
 

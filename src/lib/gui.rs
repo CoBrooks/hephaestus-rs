@@ -90,43 +90,43 @@ impl DebugGui {
             
             ui.horizontal(|ui| {
                 ui.label("Setup:");
-                ui.add_space(ui.available_size_before_wrap().x - ui.fonts().glyph_width(egui::TextStyle::Monospace, '0') * 10.0);
-                ui.label(format!("{:.2}ms", frame_breakdown.setup.as_secs_f32() * 1000.0));
+                ui.add_space(ui.available_size_before_wrap().x - ui.fonts().glyph_width(egui::TextStyle::Monospace, '0') * 12.0);
+                ui.label(format!("{:.2}ms", frame_breakdown.setup.as_secs_f64() * 1000.0));
             });
 
             ui.horizontal(|ui| {
                 ui.label("Object Loop:");
-                ui.add_space(ui.available_size_before_wrap().x - ui.fonts().glyph_width(egui::TextStyle::Monospace, '0') * 10.0);
-                ui.label(format!("{:.2}ms", frame_breakdown.object_loop.as_secs_f32() * 1000.0));
+                ui.add_space(ui.available_size_before_wrap().x - ui.fonts().glyph_width(egui::TextStyle::Monospace, '0') * 12.0);
+                ui.label(format!("{:.2}ms", frame_breakdown.object_loop.as_secs_f64() * 1000.0));
             });
 
             ui.horizontal(|ui| {
                 ui.label("Ambient Lighting:");
-                ui.add_space(ui.available_size_before_wrap().x - ui.fonts().glyph_width(egui::TextStyle::Monospace, '0') * 10.0);
-                ui.label(format!("{:.2}ms", frame_breakdown.ambient.as_secs_f32() * 1000.0));
+                ui.add_space(ui.available_size_before_wrap().x - ui.fonts().glyph_width(egui::TextStyle::Monospace, '0') * 12.0);
+                ui.label(format!("{:.2}ms", frame_breakdown.ambient.as_secs_f64() * 1000.0));
             });
 
             ui.horizontal(|ui| {
                 ui.label("Directional Lighting:");
-                ui.add_space(ui.available_size_before_wrap().x - ui.fonts().glyph_width(egui::TextStyle::Monospace, '0') * 10.0);
-                ui.label(format!("{:.2}ms", frame_breakdown.directional.as_secs_f32() * 1000.0));
+                ui.add_space(ui.available_size_before_wrap().x - ui.fonts().glyph_width(egui::TextStyle::Monospace, '0') * 12.0);
+                ui.label(format!("{:.2}ms", frame_breakdown.directional.as_secs_f64() * 1000.0));
             });
 
             ui.horizontal(|ui| {
                 ui.label("GPU Dispatch (Draw Call):");
-                ui.add_space(ui.available_size_before_wrap().x - ui.fonts().glyph_width(egui::TextStyle::Monospace, '0') * 10.0);
-                ui.label(format!("{:.2}ms", frame_breakdown.draw_call.as_secs_f32() * 1000.0));
+                ui.add_space(ui.available_size_before_wrap().x - ui.fonts().glyph_width(egui::TextStyle::Monospace, '0') * 12.0);
+                ui.label(format!("{:.2}ms", frame_breakdown.draw_call.as_secs_f64() * 1000.0));
             });
 
             ui.horizontal(|ui| {
                 ui.label("Total:");
-                ui.add_space(ui.available_size_before_wrap().x - ui.fonts().glyph_width(egui::TextStyle::Monospace, '0') * 11.5);
+                ui.add_space(ui.available_size_before_wrap().x - ui.fonts().glyph_width(egui::TextStyle::Monospace, '0') * 13.5);
                 ui.label(format!("{:.2}ms", time.last_60_frame_durations.last().unwrap_or(&0.0) * 1000.0));
             });
             
             ui.horizontal(|ui| {
                 ui.label("Target:");
-                ui.add_space(ui.available_size_before_wrap().x - ui.fonts().glyph_width(egui::TextStyle::Monospace, '0') * 11.5);
+                ui.add_space(ui.available_size_before_wrap().x - ui.fonts().glyph_width(egui::TextStyle::Monospace, '0') * 13.5);
                 ui.label(format!("{:.2}ms", 1000.0 / 60.0));
             });
         });
