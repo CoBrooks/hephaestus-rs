@@ -5,7 +5,7 @@ use vulkano::descriptor_set::{ DescriptorSet, PersistentDescriptorSet };
 use vulkano::device::{ Device, Queue, DeviceExtensions };
 use vulkano::device::physical::{ PhysicalDevice, PhysicalDeviceType };
 use vulkano::format::Format;
-use vulkano::image::ImageAccess;
+use vulkano::image::{ ImageAccess, ImageUsage };
 use vulkano::image::attachment::AttachmentImage;
 use vulkano::image::swapchain::SwapchainImage;
 use vulkano::image::view::ImageView;
@@ -132,11 +132,12 @@ impl Renderer {
                 .dimensions(dimensions)
                 .format(format)
                 .layers(1)
-                .usage(usage)
+                .usage(ImageUsage::color_attachment())
                 .sharing_mode(&queue)
                 .transform(SurfaceTransform::Identity)
                 .composite_alpha(alpha)
-                .present_mode(PresentMode::Fifo)
+                // PresentMode::Fifo = VSync, ::Immediate = potential screen tearing, ::Mailbox = minimum latency, w/o tearing, ::Relaxed = Fifo if > 60, else Immediate
+                .present_mode(PresentMode::Mailbox)
                 .fullscreen_exclusive(FullscreenExclusive::Default)
                 .clipped(true)
                 .color_space(color_space)
@@ -314,9 +315,8 @@ impl Renderer {
         let img_index = 0;
         let acquire_future = None;
         
-        let images =
-            images.into_iter().map(|image| ImageView::new(image).unwrap()).collect::<Vec<_>>();
-        
+        let final_images = images.into_iter().map(|image| ImageView::new(image).unwrap()).collect::<Vec<_>>();
+
         Self {
             instance,
             surface,
@@ -342,7 +342,7 @@ impl Renderer {
             commands,
             img_index,
             acquire_future,
-            final_images: images
+            final_images,
         }
     }
     //}}}
@@ -364,7 +364,7 @@ impl Renderer {
                 return;
             }
         }
-
+        
         let (img_index, suboptimal, acquire_future) = match vulkano::swapchain::acquire_next_image(self.swapchain.clone(), None) {
             Ok(r) => r,
             Err(vulkano::swapchain::AcquireError::OutOfDate) => {
@@ -393,7 +393,7 @@ impl Renderer {
         self.acquire_future = Some(acquire_future);
     }
 
-    pub fn geometry(&mut self, mesh: &Mesh, transform: &Transform, material: Option<&Material>, texture: Option<&Texture>) {
+    pub fn geometry(&mut self, mesh: &Mesh, transform: &Transform, material: Option<&Material>, texture: Option<&mut Texture>) {
         match self.render_stage {
             RenderStage::Deferred => { },
             RenderStage::NeedsRedraw => {
@@ -427,7 +427,7 @@ impl Renderer {
                 .build().unwrap()
         );
         
-        // Make sure vertex color is up-to-date (allows dynamically changing color in update loop)
+        // Make sure vertex color is up-to-date (allows dynamically changing color)
         let model_color = if let Some(material) = material { 
             material.color
         } else {
@@ -439,19 +439,37 @@ impl Renderer {
             .map(|&v| Vertex { color: model_color, ..v })
             .collect();
 
-        let vertex_buffer = CpuAccessibleBuffer::from_iter(
-            self.device.clone(),
-            BufferUsage::vertex_buffer(),
-            false,
-            vertices.iter().cloned()
-        ).unwrap();
+        let vertex_buffer = unsafe {
+            let buffer = CpuAccessibleBuffer::uninitialized_array(
+                self.device.clone(),
+                vertices.len() as u64,
+                BufferUsage::vertex_buffer(),
+                false
+            ).unwrap();
 
-        let index_buffer = CpuAccessibleBuffer::from_iter(
-            self.device.clone(),
-            BufferUsage::index_buffer(),
-            false,
-            mesh.data.indices.iter().cloned()
-        ).unwrap();
+            {
+                let mut mapping = buffer.write().unwrap();
+                mapping.clone_from_slice(vertices.as_slice());
+            }
+
+            buffer
+        };
+
+        let index_buffer = unsafe {
+            let buffer = CpuAccessibleBuffer::uninitialized_array(
+                self.device.clone(),
+                mesh.data.indices.len() as u64,
+                BufferUsage::index_buffer(),
+                false,
+            ).unwrap();
+
+            {
+                let mut mapping = buffer.write().unwrap();
+                mapping.clone_from_slice(mesh.data.indices.as_slice());
+            }
+
+            buffer
+        };
         
         let layout = self.deferred_pipeline.layout().descriptor_set_layouts().get(2).unwrap();
         let (image, mut texture_future) = if let Some(texture) = texture {

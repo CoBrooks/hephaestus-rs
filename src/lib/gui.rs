@@ -26,8 +26,7 @@ impl DebugGui {
 
     pub fn show(&mut self, gui: &mut Gui, time: &EngineTime, frame_breakdown: &FrameTimeBreakdown) {
         gui.immediate_ui(|gui| {
-            let mut ctx = gui.context();
-            self.configure_fonts(&mut ctx);
+            let ctx = gui.context();
 
             egui::TopBottomPanel::bottom("Debug")
                 .default_height(350.0)
@@ -48,7 +47,7 @@ impl DebugGui {
         });
     }
 
-    fn configure_fonts(&mut self, ctx: &mut CtxRef) {
+    pub fn configure_fonts(&mut self, ctx: &mut CtxRef) {
         let mut font_style = FontDefinitions::default();
         font_style.font_data.insert("JetBrains Mono".into(), Cow::Borrowed(include_bytes!("../../fonts/JetBrainsMono-Regular.ttf")));
         font_style.fonts_for_family.insert(FontFamily::Monospace, vec!["JetBrains Mono".into(), ]);

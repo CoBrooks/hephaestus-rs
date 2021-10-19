@@ -142,6 +142,8 @@ impl Engine {
 
     pub fn start(mut self, event_loop: EventLoop<()>) {
         let mut gui = Gui::new(self.renderer.surface.clone(), self.renderer.queue.clone(), true);
+        let mut ctx = gui.context();
+        self.debug_gui.configure_fonts(&mut ctx);
 
         let mut previous_frame_end: Option<Box<dyn vulkano::sync::GpuFuture>> = Some(Box::new(vulkano::sync::now(self.renderer.device.clone())));
 
@@ -166,9 +168,8 @@ impl Engine {
                 },
                 Event::MainEventsCleared => {
                     self.debug_gui.show(&mut gui, &self.time, &frame_breakdown);
-                    frame_breakdown.restart();
-
                     previous_frame_end.as_mut().take().unwrap().cleanup_finished();
+                    frame_breakdown.restart();
 
                     self.renderer.start(self.world.void_color);
                     frame_breakdown.update_setup();
@@ -181,7 +182,7 @@ impl Engine {
                                     mesh, 
                                     transform, 
                                     self.world.get_component_by_id::<Material>(id),
-                                    self.world.get_component_by_id::<Texture>(id)
+                                    self.initial_world.get_component_by_id_mut::<Texture>(id)
                                 );
                             }
                         }
@@ -189,7 +190,7 @@ impl Engine {
 
                     let logics = self.initial_world.get_components_of_type::<Logic>().unwrap_or_default();
                     for logic in &logics {
-                        (logic.update)(*logic.get_id(), &mut self.world)
+                        (logic.update)(*logic.get_id(), &mut self.world, &self.time)
                     }
                     frame_breakdown.update_object_loop();
 

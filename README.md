@@ -23,9 +23,6 @@ Note: This project was developed on an Arch Linux system with an AMD GPU, thus I
 
 ## TODO
 
-- Refactor the current object system into an ECS one. 
-- Refactor the rust binary into an example crate.
-- Investigate the high setup time (probably has something to do with the Vulkano fps limit based on monitor refresh rate).
 - Add the ability to move the camera around the scene.
 - More lighting: Specular highlights and point lights.
 - ...

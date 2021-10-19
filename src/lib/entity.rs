@@ -14,6 +14,7 @@ use vulkano::buffer::{ BufferUsage, CpuAccessibleBuffer };
 use crate::{
     mesh_data::{ MeshData, MeshType },
     world::World,
+    engine::EngineTime,
     // logger::{ self, MessageEmitter }
 };
 
@@ -113,7 +114,7 @@ impl Transform {
 pub struct Logic {
     id: usize,
     pub init: Box<fn(usize, &mut World)>,
-    pub update: Box<fn(usize, &mut World)>
+    pub update: Box<fn(usize, &mut World, &EngineTime)>
 }
 
 #[derive(Clone, Component)]
@@ -147,7 +148,8 @@ pub struct Texture {
     id: usize,
     pub path: String,
     bytes: Vec<u8>,
-    dimensions: ImageDimensions
+    dimensions: ImageDimensions,
+    buffer: Option<Arc<CpuAccessibleBuffer<[u8]>>>
 }
 
 impl Texture {
@@ -181,18 +183,26 @@ impl Texture {
         ).unwrap()
     }
 
-    pub unsafe fn get_buffer(&self, queue: &Arc<Queue>) -> (Arc<ImageView<Arc<ImmutableImage>>>, Box<dyn GpuFuture>) {
-        let buffer: Arc<CpuAccessibleBuffer<[u8]>> = CpuAccessibleBuffer::uninitialized_array(
-            queue.device().clone(),
-            (self.dimensions.width() * self.dimensions.height() * 4) as u64,
-            BufferUsage::transfer_source(),
-            true
-        ).unwrap();
+    pub unsafe fn get_buffer(&mut self, queue: &Arc<Queue>) -> (Arc<ImageView<Arc<ImmutableImage>>>, Box<dyn GpuFuture>) {
+        let buffer = if let Some(b) = &self.buffer {
+            b.clone()
+        } else {
+            let buffer: Arc<CpuAccessibleBuffer<[u8]>> = CpuAccessibleBuffer::uninitialized_array(
+                queue.device().clone(),
+                (self.dimensions.width() * self.dimensions.height() * 4) as u64,
+                BufferUsage::transfer_source(),
+                true
+            ).unwrap();
 
-        { // New scope to "fool" the borrow-checker (can't borrow `buffer` as mutable and immutable in the same scope)
-            let mut mapping = buffer.write().unwrap();
-            mapping.copy_from_slice(self.bytes.as_slice());
-        }
+            { // New scope to "fool" the borrow-checker (can't borrow `buffer` as mutable and immutable in the same scope)
+                let mut mapping = buffer.write().unwrap();
+                mapping.copy_from_slice(self.bytes.as_slice());
+            }
+
+            self.buffer = Some(buffer.clone());
+
+            buffer
+        };
 
         let (image, future) = ImmutableImage::from_buffer(
             buffer,
@@ -206,23 +216,9 @@ impl Texture {
     }
 
     pub fn get_null_buffer(queue: &Arc<Queue>) -> (Arc<ImageView<Arc<ImmutableImage>>>, Box<dyn GpuFuture>) {
-        let png_bytes = fs::read("models/textures/null_texture.png").unwrap(); 
-        let cursor = Cursor::new(png_bytes);
-        let decoder = png::Decoder::new(cursor);
-        let mut reader = decoder.read_info().unwrap();
-        let info = reader.info();
-        let dimensions = ImageDimensions::Dim2d {
-            width: info.width,
-            height: info.height,
-            array_layers: 1
-        };
-        let mut image_data = Vec::new();
-        image_data.resize((info.width * info.height * 4) as usize, 0);
-        reader.next_frame(&mut image_data).unwrap();
-
         let (image, future) = ImmutableImage::from_iter(
-            image_data.iter().cloned(),
-            dimensions,
+            [255u8, 255, 255, 0].iter().cloned(),
+            ImageDimensions::Dim2d { width: 1, height: 1, array_layers: 1},
             vulkano::image::MipmapsCount::One,
             Format::R8G8B8A8Srgb,
             queue.clone()
@@ -261,7 +257,7 @@ impl EntityBuilder {
         self
     }
 
-    pub fn logic(mut self, init: Box<fn(usize, &mut World)>, update: Box<fn(usize, &mut World)>) -> Self {
+    pub fn logic(mut self, init: Box<fn(usize, &mut World)>, update: Box<fn(usize, &mut World, &EngineTime)>) -> Self {
         let l = Logic {
             id: 0,
             init,
@@ -301,7 +297,8 @@ impl EntityBuilder {
             id: 0,
             path: path.into(),
             bytes: Vec::new(),
-            dimensions: ImageDimensions::Dim2d { width: 0, height: 0, array_layers: 0 }
+            dimensions: ImageDimensions::Dim2d { width: 0, height: 0, array_layers: 0 },
+            buffer: None
         };
         t.init();
 
