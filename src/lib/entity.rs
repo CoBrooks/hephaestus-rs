@@ -15,6 +15,7 @@ use crate::{
     mesh_data::{ MeshData, MeshType },
     world::World,
     engine::EngineTime,
+    input::Input
     // logger::{ self, MessageEmitter }
 };
 
@@ -114,7 +115,13 @@ impl Transform {
 pub struct Logic {
     id: usize,
     pub init: Box<fn(usize, &mut World)>,
-    pub update: Box<fn(usize, &mut World, &EngineTime)>
+    pub update: Box<fn(usize, &mut UpdateData)>
+}
+
+pub struct UpdateData<'a> {
+    pub world: &'a mut World,
+    pub time: &'a EngineTime,
+    pub input: &'a Input
 }
 
 #[derive(Clone, Component)]
@@ -257,7 +264,7 @@ impl EntityBuilder {
         self
     }
 
-    pub fn logic(mut self, init: Box<fn(usize, &mut World)>, update: Box<fn(usize, &mut World, &EngineTime)>) -> Self {
+    pub fn logic(mut self, init: Box<fn(usize, &mut World)>, update: Box<fn(usize, &mut UpdateData)>) -> Self {
         let l = Logic {
             id: 0,
             init,

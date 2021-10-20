@@ -8,6 +8,7 @@ use crate::{
     renderer::Renderer,
     gui::DebugGui,
     entity::*,
+    input::Input,
     // logger::{ self, MessageEmitter }
 };
 
@@ -156,8 +157,15 @@ impl Engine {
             (l.init)(*l.get_id(), &mut self.world)
         }
 
+        let window_size = self.renderer.surface.window().inner_size();
+        let mut input = Input::new((window_size.width, window_size.height));
+        
         event_loop.run(move |event, _, control_flow| {
             gui.update(&event);
+
+            if let Event::WindowEvent { event, .. } = &event {
+                input.parse(event)
+            }
 
             match event {
                 Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => {
@@ -188,9 +196,15 @@ impl Engine {
                         }
                     }
 
+                    let mut update_data = UpdateData {
+                        world: &mut self.world,
+                        time: &self.time,
+                        input: &input
+                    };
+
                     let logics = self.initial_world.get_components_of_type::<Logic>().unwrap_or_default();
                     for logic in &logics {
-                        (logic.update)(*logic.get_id(), &mut self.world, &self.time)
+                        (logic.update)(*logic.get_id(), &mut update_data)
                     }
                     frame_breakdown.update_object_loop();
 
@@ -206,6 +220,7 @@ impl Engine {
                     frame_breakdown.update_draw_call();
                     
                     self.time.update();
+                    input.update();
                 },
                 Event::RedrawRequested(_) => {
                     self.renderer.surface.window().request_redraw();

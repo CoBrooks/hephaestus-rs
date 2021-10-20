@@ -1,19 +1,20 @@
 use winit::event_loop::EventLoop;
-use cgmath::Deg;
+use winit::event::VirtualKeyCode;
+use cgmath::{ Quaternion, Euler, Deg, Rad };
 
 use hephaestus_lib::{
-    engine::{ Engine, EngineTime },
+    engine::Engine,
     world::World,
     camera::Camera,
     light::DirectionalLight,
     logger::{ self, MessageEmitter },
     mesh_data::{ MeshType, PrimitiveType },
-    entity::Transform,
+    entity::{ Transform, UpdateData },
 };
 
 #[allow(unused)]
 fn main() {
-    let mut world = World::new(Camera::default([2.0, 2.0, 0.5]));
+    let mut world = World::new(Camera::default([0.0, 2.0, 0.5]));
     world.void_color = [0.01, 0.01, 0.01, 1.0];
     
     let white_light = DirectionalLight::new([1.0, 2.0, 1.0, 1.0], [0.5, 0.5, 0.5]);
@@ -56,8 +57,20 @@ fn init(id: usize, _: &mut World) {
     logger::log_debug(&format!("{}: INIT!", id), MessageEmitter::Object(id.to_string()))
 }
 
-fn update(id: usize, world: &mut World, time: &EngineTime) {
-    let transform = world.get_component_by_id_mut::<Transform>(id).expect("");
-    transform.rotate([Deg(0.0), Deg(0.0), Deg(60.0 * time.delta_time)]);
+fn update(id: usize, data: &mut UpdateData) {
+    let (mouse_x, mouse_y) = data.input.mouse_pos_rel();
+    let rot_x: f32 = -(mouse_y * 2.0 - 1.0).atan();
+    let rot_y: f32 = (mouse_x * 2.0 - 1.0).atan();
+
+    let transform = data.world.get_component_by_id_mut::<Transform>(id).unwrap();
+    transform.rotation = Quaternion::from(Euler::new(Rad(rot_x), Rad(0.0), Rad(rot_y)));
+
+    if data.input.get_key(VirtualKeyCode::Space) {
+        transform.rotate([Deg(0.0), Deg(0.0), Deg(60.0 * data.time.delta_time)]);
+    }
+
+    if data.input.get_key_down(VirtualKeyCode::A) {
+        logger::log_info("User pressed 'A'", MessageEmitter::Object(id.to_string()));
+    }
 }
 
