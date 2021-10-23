@@ -20,7 +20,6 @@ use vulkano::sync::{ FlushError, GpuFuture };
 use vulkano::Version;
 use vulkano_win::VkSurfaceBuild;
 use winit::event_loop::EventLoop;
-use winit::dpi::PhysicalPosition;
 use winit::window::{ Window, WindowBuilder };
 use egui_winit_vulkano::Gui;
 

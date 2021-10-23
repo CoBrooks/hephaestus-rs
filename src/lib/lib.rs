@@ -17,29 +17,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn transform_rotation() {
-        use entity::Transform;
-        use cgmath::{ Quaternion, Vector3, Rad };
-        use std::f32::consts::{ FRAC_PI_2, FRAC_PI_4 };
-
-        let mut t = Transform::default();
-        t.translation = [1.0; 3].into();
-
-        // Is the initial rotation 0?
-        let zero_q = Quaternion::new(1.0, 0.0, 0.0, 0.0);
-        assert_eq!(t.rotation, zero_q);
-
-        // Rotate 90deg (pi/2 rad) on x-axis
-        let expected_vec = Quaternion::new(FRAC_PI_4.cos(), FRAC_PI_4.sin(), 0.0, 0.0) * Vector3::new(1.0, 1.0, 1.0);
-        t.rotate([Rad(FRAC_PI_2), Rad(0.0), Rad(0.0)]);
-        assert_eq!(t.rotation * t.translation, expected_vec);
-    }
-
-    #[test]
     fn transform_relative_vectors() {
         use entity::Transform;
-        use cgmath::{ Quaternion, Vector3, Rad };
-        use std::f32::consts::{ FRAC_PI_2, PI };
+        use cgmath::{ Vector3, Rad };
+        use std::f32::consts::FRAC_PI_2;
 
         let mut t = Transform::default();
 

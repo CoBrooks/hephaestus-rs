@@ -82,28 +82,28 @@ impl MeshData {
 
         data.vertices = vec![
             Vertex { // top left
-                position: [-0.5, 0.0, -0.5],
+                position: [-0.5, 0.0, 0.5],
                 color: [1.0; 3],
                 normal: [0.0, 1.0, 0.0],
-                uv: [1.0, 1.0]
+                uv: [0.0, 0.0]
             },
             Vertex { // top right
+                position: [0.5, 0.0, 0.5],
+                color: [1.0; 3],
+                normal: [0.0, 1.0, 0.0],
+                uv: [1.0, 0.0]
+            },
+            Vertex { // bottom right
                 position: [0.5, 0.0, -0.5],
                 color: [1.0; 3],
                 normal: [0.0, 1.0, 0.0],
                 uv: [0.0, 1.0]
             },
-            Vertex { // bottom right
-                position: [0.5, 0.0, 0.5],
-                color: [1.0; 3],
-                normal: [0.0, 1.0, 0.0],
-                uv: [0.0, 0.0]
-            },
             Vertex { // bottom left
-                position: [-0.5, 0.0, 0.5],
+                position: [-0.5, 0.0, -0.5],
                 color: [1.0; 3],
                 normal: [0.0, 1.0, 0.0],
-                uv: [1.0, 0.0]
+                uv: [1.0, 1.0]
             },
         ];
 

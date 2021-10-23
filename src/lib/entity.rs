@@ -140,6 +140,16 @@ pub struct Logic {
     pub update: Box<fn(usize, &mut UpdateData)>
 }
 
+impl Logic {
+    pub fn empty_init() -> Box<fn(usize, &mut World)> {
+        Box::new(|_: usize, _: &mut World| { })
+    }
+    
+    pub fn empty_update() -> Box<fn(usize, &mut UpdateData)> {
+        Box::new(|_: usize, _: &mut UpdateData| { })
+    }
+}
+
 pub struct UpdateData<'a> {
     pub world: &'a mut World,
     pub time: &'a EngineTime,
