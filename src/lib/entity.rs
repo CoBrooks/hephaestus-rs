@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::io::Cursor;
 use std::fs;
 use downcast_rs::{ Downcast, impl_downcast };
-use cgmath::{ Vector3, Matrix4, Quaternion, Euler, Deg };
+use cgmath::{ Vector3, Point3, Matrix4, Quaternion, Euler, Deg, Rad, Rotation3, Rotation, SquareMatrix, InnerSpace };
 use vulkano::image::{ ImageDimensions, ImmutableImage, view::ImageView };
 use vulkano::sampler::Sampler;
 use vulkano::sync::GpuFuture;
@@ -15,12 +15,13 @@ use crate::{
     mesh_data::{ MeshData, MeshType },
     world::World,
     engine::EngineTime,
-    input::Input
+    input::Input,
+    camera::Camera,
     // logger::{ self, MessageEmitter }
 };
 
 pub trait Component: Downcast + ComponentClone { 
-    fn get_id(&self) -> &usize;
+    fn get_id(&self) -> usize;
     fn set_id(&mut self, id: usize);
 }
 impl_downcast!(Component);
@@ -41,40 +42,6 @@ impl Clone for Box<dyn Component> {
     }
 }
 
-pub trait ComponentCollection {
-    fn has_transform(&self) -> bool;
-    fn has_mesh(&self) -> bool;
-    fn has_material(&self) -> bool;
-    fn has_texture(&self) -> bool;
-}
-
-impl ComponentCollection for Vec<&Box<dyn Component>> {
-    fn has_transform(&self) -> bool {
-        !self.iter()
-            .filter_map(|c| c.downcast_ref::<Transform>())
-            .collect::<Vec<&Transform>>()
-            .is_empty()
-    }
-    fn has_mesh(&self) -> bool {
-        !self.iter()
-            .filter_map(|c| c.downcast_ref::<Mesh>())
-            .collect::<Vec<&Mesh>>()
-            .is_empty()
-    }
-    fn has_material(&self) -> bool {
-        !self.iter()
-            .filter_map(|c| c.downcast_ref::<Material>())
-            .collect::<Vec<&Material>>()
-            .is_empty()
-    }
-    fn has_texture(&self) -> bool {
-        !self.iter()
-            .filter_map(|c| c.downcast_ref::<Texture>())
-            .collect::<Vec<&Texture>>()
-            .is_empty()
-    }
-}
-
 #[derive(Clone, Component)]
 pub struct Entity {
     id: usize,
@@ -85,17 +52,44 @@ pub struct Transform {
     id: usize,
     pub translation: Vector3<f32>,
     pub scale: Vector3<f32>,
-    pub rotation: Quaternion<f32>
+    pub rotation: Quaternion<f32>,
+    pub local_rotation: Quaternion<f32>,
 }
 
 impl Transform {
+    pub fn default() -> Self {
+        Self {
+            id: 0,
+            translation: [0.0; 3].into(),
+            scale: [1.0; 3].into(),
+            rotation: Quaternion::from(Euler::new(Deg(0.0), Deg(0.0), Deg(0.0))),
+            local_rotation: Quaternion::from(Euler::new(Deg(0.0), Deg(0.0), Deg(0.0))),
+        }
+    }
+
     pub fn translate(&mut self, translation: [f32; 3]) {
         self.translation += Vector3::from(translation);
     }
 
-    pub fn rotate(&mut self, rotation: [Deg<f32>; 3]) {
-        let q = Quaternion::from(Euler::new(rotation[0], rotation[1], rotation[2]));
-        self.rotation = self.rotation * q; // To "add" two rotations, you multiply the Quaternions
+    pub fn translate_local(&mut self, translation: [f32; 3]) {
+        let (x, y, z) = (translation[0], translation[1], translation[2]);
+
+        self.translation += 
+            self.right_vector() * x +
+            self.up_vector() * y +
+            self.forward_vector() * z;
+    }
+
+    pub fn rotate(&mut self, rotation: [Rad<f32>; 3]) {
+        let (x, y, z) = (rotation[0], rotation[1], rotation[2]);
+        
+        self.rotation = Quaternion::from(Euler::new(x, y, z)) * self.rotation;
+    }
+
+    pub fn rotate_local(&mut self, rotation: [Rad<f32>; 3]) {
+        let (x, y, z) = (rotation[0], rotation[1], rotation[2]);
+        
+        self.local_rotation = Quaternion::from(Euler::new(x, y, z)) * self.local_rotation;
     }
 
     pub fn scale(&mut self, scale: [f32; 3]) {
@@ -103,11 +97,39 @@ impl Transform {
     }
 
     pub fn model_matrix(&self) -> Matrix4<f32> {
-        // Not SRT order? - https://docs.microsoft.com/en-us/dotnet/desktop/winforms/advanced/why-transformation-order-is-significant
-        // This does get the desired result, though...
-        Matrix4::from_translation(self.translation) 
-            * Matrix4::from_nonuniform_scale(self.scale.x, self.scale.y, self.scale.z)
-            * Matrix4::from(self.rotation) 
+        // https://solarianprogrammer.com/2013/05/22/opengl-101-matrices-projection-view-model/
+        let (x, y, z) = self.translation.into();
+        let t = Matrix4::from_cols(
+            [1.0, 0.0, 0.0, 0.0].into(),
+            [0.0, 1.0, 0.0, 0.0].into(),
+            [0.0, 0.0, 1.0, 0.0].into(),
+            [x, y, z, 1.0].into(),
+        );
+
+        let (sx, sy, sz) = self.scale.into();
+        let s = Matrix4::from_cols(
+            [sx, 0.0, 0.0, 0.0].into(),
+            [0.0, sy, 0.0, 0.0].into(),
+            [0.0, 0.0, sz, 0.0].into(),
+            [0.0, 0.0, 0.0, 1.0].into(),
+        );
+
+        let global_r = Matrix4::from(self.rotation);
+        let local_r = Matrix4::from(self.local_rotation);
+
+        t * global_r * local_r * s
+    }
+
+    pub fn forward_vector(&self) -> Vector3<f32> {
+        (Matrix4::from(self.rotation) * Matrix4::from(self.local_rotation) * Vector3::unit_z().extend(1.0)).truncate()
+    }
+
+    pub fn right_vector(&self) -> Vector3<f32> {
+        (Matrix4::from(self.rotation) * Matrix4::from(self.local_rotation) * Vector3::unit_x().extend(1.0)).truncate()
+    }
+    
+    pub fn up_vector(&self) -> Vector3<f32> {
+        (Matrix4::from(self.rotation) * Matrix4::from(self.local_rotation) * Vector3::unit_y().extend(1.0)).truncate()
     }
 }
 
@@ -253,11 +275,14 @@ impl EntityBuilder {
     }
 
     pub fn transform(mut self, translation: [f32; 3], scale: [f32; 3], rotation: [Deg<f32>; 3]) -> Self {
+        let rotation = Quaternion::from(Euler::new(rotation[0], rotation[1], rotation[2]));
+
         let t = Transform {
             id: 0,
             translation: translation.into(),
             scale: scale.into(),
-            rotation: Quaternion::from(Euler::new(rotation[0], rotation[1], rotation[2]))
+            rotation,
+            local_rotation: rotation,
         };
         self.components.push(Box::new(t));
 
@@ -310,6 +335,14 @@ impl EntityBuilder {
         t.init();
 
         self.components.push(Box::new(t));
+
+        self
+    }
+
+    pub fn camera(mut self) -> Self {
+        let c = Camera::default();
+
+        self.components.push(Box::new(c));
 
         self
     }

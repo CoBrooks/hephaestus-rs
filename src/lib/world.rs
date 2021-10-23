@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
 use crate::{
-    camera::Camera,
     light::DirectionalLight,
     logger::{ self, MessageEmitter },
     entity::{ Component, EntityBuilder }
@@ -11,19 +10,17 @@ use crate::{
 pub struct World {
     pub entities: HashMap<usize, Vec<Box<dyn Component>>>,
     pub lights: Vec<DirectionalLight>,
-    pub camera: Camera,
     pub void_color: [f32; 4],
     next_id: usize
 }
 
 impl World {
-    pub fn new(camera: Camera) -> Self {
+    pub fn new() -> Self {
         logger::log_debug("Instantiating world.", MessageEmitter::World);
         
         World {
             entities: HashMap::new(),
             lights: Vec::new(),
-            camera,
             void_color: [0.01, 0.01, 0.01, 1.0],
             next_id: 0
         }
@@ -75,6 +72,13 @@ impl World {
         entity.iter_mut()
             .find(|c| c.downcast_ref::<T>().is_some())
             .map(|c| c.downcast_mut::<T>().unwrap())
+    }
+
+    pub fn get_first_component_of_type<T: Component>(&self) -> Option<&T> {
+        let components: Vec<&Box<dyn Component>> = self.entities.values().flatten().collect();
+        let c = components.iter().find(|c| c.downcast_ref::<T>().is_some()).map(|c| c.downcast_ref::<T>().unwrap());
+
+        c
     }
 
     pub fn get_components_of_type<T: Component>(&self) -> Option<Vec<&T>> {

@@ -20,8 +20,8 @@ use vulkano::sync::{ FlushError, GpuFuture };
 use vulkano::Version;
 use vulkano_win::VkSurfaceBuild;
 use winit::event_loop::EventLoop;
+use winit::dpi::PhysicalPosition;
 use winit::window::{ Window, WindowBuilder };
-use cgmath::{ Rad, Deg, perspective };
 use egui_winit_vulkano::Gui;
 
 use crate::{
@@ -643,6 +643,23 @@ impl Renderer {
         self.render_stage = RenderStage::Stopped;
     }
 
+    pub fn update_camera(&mut self, camera: &Camera) {
+        self.vp_buffer = CpuAccessibleBuffer::from_data(
+            self.device.clone(), 
+            BufferUsage::uniform_buffer(), 
+            false, 
+            camera.get_vp_buffer(self.surface.window().inner_size().into())
+        ).unwrap();
+        
+        let vp_layout = self.deferred_pipeline.layout().descriptor_set_layouts().get(0).unwrap();
+        let vp_set = Arc::new(PersistentDescriptorSet::start(vp_layout.clone())
+            .add_buffer(self.vp_buffer.clone()).unwrap()
+            .build().unwrap()
+        );
+
+        self.vp_set = vp_set;
+    }
+
     pub fn recreate_swapchain(&mut self) {
         self.render_stage = RenderStage::NeedsRedraw;
         self.commands = None;
@@ -653,8 +670,6 @@ impl Renderer {
             Err(SwapchainCreationError::UnsupportedDimensions) => return,
             Err(e) => panic!("{:?}", e)
         };
-        self.camera.proj = perspective(Rad::from(Deg(110.0)), dimensions[0] as f32 / dimensions[1] as f32, 0.01, 100.0);
-
         self.swapchain = new_swapchain;
         let (new_framebuffers, new_color_buffer, new_normal_buffer) = Self::window_size_dependent_setup(self.device.clone(), &new_images, self.render_pass.clone(), &mut self.dynamic_state);
         self.framebuffers = new_framebuffers;
